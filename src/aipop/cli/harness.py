@@ -513,13 +513,14 @@ def manage_engagement(
 
 
 def _load_policy_with_prompt(
-    policy_path: str | Path | None, skip_prompt: bool = False
+    policy_path: str | Path | None, skip_prompt: bool = False, quiet: bool = False
 ) -> tuple[PolicyConfig | None, list]:
     """Load policy with optional interactive prompt.
 
     Args:
         policy_path: Path to policy file or directory
         skip_prompt: If True, skip interactive prompt and use defaults
+        quiet: If True, suppress info messages (for scan mode)
 
     Returns:
         Tuple of (policy_config, detectors_list)
@@ -533,11 +534,13 @@ def _load_policy_with_prompt(
         # Create detectors based on available policies
         if policy_config.content_policy:
             detectors.append(HarmfulContentDetector(policy_config.content_policy))
-            print_info("Content policy detector enabled")
+            if not quiet:
+                print_info("Content policy detector enabled")
 
         if policy_config.tool_policy:
             detectors.append(ToolPolicyDetector(policy_config.tool_policy))
-            print_info("Tool policy detector enabled")
+            if not quiet:
+                print_info("Tool policy detector enabled")
 
         return policy_config, detectors
     except PolicyLoadError:
@@ -1794,8 +1797,12 @@ def scan_cmd(
                 recommended_suites = discovery_result.recommended_suites
 
                 if not is_json:
+                    target_display = (
+                        "static (pipeline validation)" if is_static
+                        else discovery_result.target
+                    )
                     recon_panel(
-                        target=discovery_result.target,
+                        target=target_display,
                         capabilities=discovery_result.capabilities,
                         recommended_suites=recommended_suites,
                         console=console,
@@ -1834,7 +1841,7 @@ def scan_cmd(
             )
 
         # Phase 3: Scan
-        _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True)
+        _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True, quiet=True)
 
         scanner = Scanner(adapter=adapter, detectors=detectors)
         scan_options = ScanOptions(
@@ -1872,6 +1879,7 @@ def scan_cmd(
                     severity=sev,
                     category=cat,
                     description=desc,
+                    is_static=is_static,
                     console=console,
                 )
 
@@ -1883,10 +1891,10 @@ def scan_cmd(
 
         elapsed = _time.time() - scan_start
 
-        # Phase 4: Reports
-        preflight(None)
+        # Phase 4: Reports — create output dirs quietly (preflight is noisy)
         reports_dir = Path(cfg.run.reports_dir)
         reports_dir.mkdir(parents=True, exist_ok=True)
+        Path(cfg.run.transcripts_dir).mkdir(parents=True, exist_ok=True)
 
         json_path = reports_dir / "summary.json"
         from aipop.reporters.json_reporter import JSONReporter

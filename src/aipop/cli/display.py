@@ -97,22 +97,31 @@ def finding_line(
     severity: str,
     category: str,
     description: str,
+    is_static: bool = False,
     console: Console | None = None,
 ) -> None:
     """Print a single finding as one compact line — Nuclei-style.
 
-    Format: [CRIT] test_id | category | description
+    Static mode uses a dim SIM badge so findings can't be mistaken for real.
+    Live mode uses severity-colored badges (CRIT, HIGH, MED, LOW).
     """
     console = console or Console(stderr=True)
 
     sev = severity.upper()
-    badge = SEVERITY_BADGE.get(sev, SEVERITY_BADGE["UNKNOWN"])
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
 
-    console.print(
-        f"  [dim]{ts}[/] {badge} [bold]{test_id}[/] [dim]|[/] {category} [dim]|[/] {description}",
-        highlight=False,
-    )
+    if is_static:
+        badge = "[dim] SIM  [/]"
+        console.print(
+            f"  [dim]{ts}[/] {badge} [dim]{test_id} | {category} | {description}[/]",
+            highlight=False,
+        )
+    else:
+        badge = SEVERITY_BADGE.get(sev, SEVERITY_BADGE["UNKNOWN"])
+        console.print(
+            f"  [dim]{ts}[/] {badge} [bold]{test_id}[/] [dim]|[/] {category} [dim]|[/] {description}",
+            highlight=False,
+        )
 
 
 def pass_line(
@@ -158,7 +167,10 @@ def scan_summary(
     """Display end-of-scan summary panel."""
     console = console or Console(stderr=True)
 
-    if failed > 0:
+    if is_static:
+        status = "[yellow]STATIC COMPLETE[/]"
+        border = "yellow"
+    elif failed > 0:
         status = "[bold red]VULNERABLE[/]"
         border = "red"
     else:
@@ -186,14 +198,17 @@ def scan_summary(
                 style = SEVERITY_STYLE.get(sev, "dim")
                 sev_parts.append(f"[{style}]{count} {sev.lower()}[/]")
         if sev_parts:
-            lines.append(f"[bold]vulns:[/]   {', '.join(sev_parts)}")
+            label = "simulated" if is_static else "vulns"
+            lines.append(f"[bold]{label}:[/]  {', '.join(sev_parts)}")
 
     if evidence_path:
         lines.append(f"[bold]report:[/]  {evidence_path}")
 
     if is_static:
         lines.append("")
-        lines.append("[dim]static mode — test against a real target for valid results[/]")
+        lines.append("[dim]static mode — no LLM, no adaptive attacks, no real model interaction[/]")
+        lines.append("[dim]validated: suite loading, detectors, reporters, evidence pipeline[/]")
+        lines.append("[dim]next: aipop scan --adapter openai --model gpt-4o-mini[/]")
 
     if failed > 0 and not is_static:
         lines.append("")
