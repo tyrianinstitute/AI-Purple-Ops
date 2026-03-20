@@ -1,0 +1,28 @@
+name: pyrit
+description: Multi-turn orchestrator with conversation memory (PyRIT-based)
+
+# Conversation settings
+max_turns: 10
+conversation_timeout_seconds: 300
+enable_branching: true
+persist_history: true
+
+# Memory settings
+db_path: out/conversations.duckdb
+auto_save: true
+history_limit: 100  # Keep last 100 conversations
+
+# Mutation settings
+enable_mutations: false  # Optional mutation injection
+mutation_config: configs/mutation/default.yaml
+
+# Debug settings
+debug: false
+verbose: false
+
+# Custom parameters
+custom_params:
+  strategy: "multi_turn"  # multi_turn, single_turn, adaptive
+  context_window: 5  # Number of previous turns to include
+  state_tracking: true
+

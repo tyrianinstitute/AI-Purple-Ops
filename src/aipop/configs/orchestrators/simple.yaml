@@ -1,0 +1,7 @@
+orchestrator_type: simple
+debug: false
+verbose: false
+max_retries: 0
+timeout_seconds: null
+custom_params: {}
+

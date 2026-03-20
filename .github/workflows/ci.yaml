@@ -1,0 +1,65 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Set ratchet SHAs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            base_ref="${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+            base_ref="${{ github.ref_name }}"
+          fi
+
+          # Guard: if base is empty or all zeros, compute a merge-base against origin/main
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            git fetch --no-tags --prune --depth=200 origin main
+            base="$(git merge-base HEAD origin/main)"
+          fi
+
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
+      - name: Install
+        run: |
+          make setup
+          python -m pip install --upgrade pip
+          pip install jsonschema pyyaml fastapi uvicorn
+      - name: Tests
+        env:
+          # Ensure CLI help output is stable for substring assertions (no ANSI styling).
+          NO_COLOR: "1"
+          RICH_DISABLE: "1"
+          TERM: dumb
+        run: make test
+      - name: Security (Bandit High Only)
+        run: .venv/bin/bandit -q -r src -lll
+      - name: Lint Ratchet (Changed Files)
+        run: |
+          .venv/bin/python scripts/ratchet_lint_changed.py --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Type Ratchet (No New Mypy Errors)
+        run: |
+          .venv/bin/python scripts/ratchet_type_baseline.py --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Validate recipes against schema
+        run: |
+          .venv/bin/python scripts/validate_recipes.py
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: out
+          path: out/

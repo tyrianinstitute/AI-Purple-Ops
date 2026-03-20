@@ -1,0 +1,82 @@
+# Redteam Toolkit Configuration
+# This file defines external redteam tools, their versions, URLs, and SHA256 checksums
+# Similar to Puppetfile pattern for dependency management
+
+tools:
+  promptfoo:
+    description: "LLM prompt testing and red teaming framework"
+    type: npm
+    stable:
+      version: "0.114.7"
+      # npm packages don't have direct download URLs, we use npm install
+      url: null
+      sha256: null  # npm packages are verified by npm registry
+    latest:
+      version: "latest"
+      url: null
+      sha256: null
+    install_cmd: "npm install -g promptfoo@{version}"
+    health_check: "promptfoo --version"
+    health_check_timeout: 5
+    execution_timeout: 300  # 5 minutes
+
+  garak:
+    description: "NVIDIA LLM vulnerability scanner with 100+ probes"
+    type: pip
+    stable:
+      version: "0.9.0.14"
+      # PyPI packages can be downloaded from pypi.org
+      url: "https://files.pythonhosted.org/packages/source/g/garak/garak-0.9.0.14.tar.gz"
+      sha256: null  # Can be computed from PyPI or left null for pip verification
+    latest:
+      version: "latest"
+      url: null
+      sha256: null
+    install_cmd: "pip install garak=={version}"
+    health_check: "python -m garak --version"
+    health_check_timeout: 5
+    execution_timeout: 600  # 10 minutes
+
+  pyrit:
+    description: "Microsoft Azure Python Risk Identification Tool for generative AI"
+    type: git
+    stable:
+      version: "0.2.0"
+      url: "https://github.com/Azure/PyRIT/archive/refs/tags/v0.2.0.tar.gz"
+      sha256: null  # Can be computed from GitHub release
+    latest:
+      version: "main"
+      url: "https://github.com/Azure/PyRIT.git"
+      sha256: null  # Git repos don't have SHA256 for source
+    install_cmd: |
+      git clone {url} /tmp/pyrit-{version} && \
+      cd /tmp/pyrit-{version} && \
+      pip install -e .
+    health_check: "python -c 'import pyrit; print(pyrit.__version__)'"
+    health_check_timeout: 10
+    execution_timeout: 600  # 10 minutes
+
+  promptinject:
+    description: "Academic prompt injection testing framework"
+    type: git
+    stable:
+      version: "main"
+      url: "https://github.com/agencyenterprise/PromptInject.git"
+      sha256: null  # Git repos don't have SHA256 for source
+    latest:
+      version: "main"
+      url: "https://github.com/agencyenterprise/PromptInject.git"
+      sha256: null
+    install_cmd: |
+      git clone {url} /tmp/promptinject && \
+      cd /tmp/promptinject && \
+      pip install -e .
+    health_check: "python -c 'import promptinject'"
+    health_check_timeout: 10
+    execution_timeout: 600  # 10 minutes
+
+# Installation preferences (can be overridden via CLI)
+defaults:
+  version_preference: "stable"  # "stable" or "latest"
+  verify_checksums: true  # Verify SHA256 when available
+  install_location: "system"  # "system" (global) or "user" (--user flag)

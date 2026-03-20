@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a change
+title: "[feat] "
+labels: ["type:feature"]
+body:
+  - type: input
+    id: phase
+    attributes:
+      label: Target phase
+      placeholder: "b0N"
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true

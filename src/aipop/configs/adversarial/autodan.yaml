@@ -1,0 +1,58 @@
+# AutoDAN Configuration
+# Hierarchical Genetic Algorithm for Adversarial Prompt Generation
+#
+# Based on Liu et al. 2023 "Autodan: Automatic and interpretable adversarial attacks"
+#
+# Defaults match paper specifications:
+# - Population size 256: Empirically optimal per paper (diminishing returns beyond)
+# - Generations 100: Achieves 88%+ ASR on Vicuna-7B within time budget
+# - Elite rate 0.1: Top 10% carry forward unchanged (standard GA practice)
+# - Crossover rate 0.5: 50% of population from crossover (balanced exploration/exploitation)
+# - Mutation rate 0.01: 1% mutation probability (low to preserve good solutions)
+
+autodan:
+  # Core hyperparameters (paper defaults)
+  population_size: 256
+  num_generations: 100
+  elite_rate: 0.1
+  crossover_rate: 0.5
+  mutation_rate: 0.01
+  
+  # Crossover settings
+  num_crossover_points: 5  # Multi-point crossover breakpoints
+  
+  # Mutation settings (from eval scripts)
+  mutator_model: "gpt-4"  # or "gpt-3.5-turbo" for cost savings
+  mutator_temperature: 0.7
+  mutator_top_p: 0.9
+  
+  # Sentence-level iterations (5x paragraph-level per paper)
+  sentence_iterations_multiplier: 5
+  
+  # Stopping criteria
+  max_iterations: 100
+  stagnation_threshold: 10  # Stop if no improvement for N generations
+  
+  # Cost controls
+  max_api_calls: 30000  # 256 * 100 + buffer
+  enable_caching: true
+  
+  # Justification:
+  # Population size 256: Paper shows this achieves optimal balance between
+  #   diversity and computational cost. Increasing beyond 256 provides
+  #   diminishing returns (<1% ASR improvement for 2x cost).
+  #
+  # Generations 100: Paper reports 88%+ ASR on Vicuna-7B with 100 generations.
+  #   This represents ~25,600 API calls (256 * 100) which is within reasonable
+  #   time and cost budgets for security testing.
+  #
+  # Elite rate 0.1: Standard genetic algorithm practice. Carrying forward top
+  #   10% ensures best solutions are preserved while allowing exploration.
+  #
+  # Crossover rate 0.5: Balanced between exploration (crossover) and
+  #   exploitation (elitism). Paper uses this value.
+  #
+  # Mutation rate 0.01: Low mutation rate preserves good solutions while
+  #   introducing diversity. LLM-guided mutation provides semantic diversity
+  #   even with low rate.
+

@@ -1,0 +1,31 @@
+enable_encoding: true
+enable_unicode: true
+enable_html: true
+enable_paraphrasing: false  # Set to true when API key available
+enable_genetic: false  # Enable for genetic algorithm experiments
+enable_gcg: false  # GCG adversarial suffixes (opt-in, expensive)
+
+paraphrase_provider: openai  # openai, anthropic, ollama
+paraphrase_model: null  # Auto-select best model
+paraphrase_api_key: null  # Read from OPENAI_API_KEY env var
+
+genetic_population_size: 20
+genetic_generations: 10
+genetic_crossover_prob: 0.7
+genetic_mutation_prob: 0.3
+
+# GCG Configuration
+gcg_mode: black-box  # white-box (requires model access) or black-box (adapter-based)
+gcg_use_library: true  # Use pre-computed universal suffixes (fast)
+gcg_generate_on_demand: false  # Generate new suffixes on-demand (slow, powerful)
+gcg_max_iterations: 100  # Max optimization iterations for on-demand generation
+
+optimization_target: asr  # asr (attack success), stealth (evade detection), balanced
+
+enable_rl_feedback: true
+rl_learning_rate: 0.1
+rl_exploration_rate: 0.2
+
+db_path: out/mutations.duckdb
+track_full_history: true
+

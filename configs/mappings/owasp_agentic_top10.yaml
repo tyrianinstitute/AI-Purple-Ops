@@ -1,0 +1,71 @@
+# OWASP Top 10 for Agentic Applications (2026)
+# Maps ASI risks to AIPOP test categories, suites, and tools
+risks:
+  ASI01:
+    name: Agent Goal Hijacking
+    category: agent_goal_hijacking
+    suites: ["adversarial", "agentic/cve_regression"]
+    tools: ["pyrit", "agentdojo"]
+    cve_examples: ["CVE-2025-32711"]
+
+  ASI02:
+    name: Tool Misuse and Exploitation
+    category: agentic_tool_misuse
+    suites: ["tools", "agentic/cve_regression"]
+    tools: ["mcpsecbench", "promptfoo"]
+    cve_examples: ["Amazon Q VS Code", "Clinejection"]
+
+  ASI03:
+    name: Identity and Privilege Abuse
+    category: identity_privilege_abuse
+    suites: ["agentic/cve_regression"]
+    tools: ["pyrit"]
+    cve_examples: ["ServiceNow BodySnatcher"]
+
+  ASI04:
+    name: Agentic Supply Chain Vulnerabilities
+    category: agentic_supply_chain
+    suites: ["agentic/cve_regression"]
+    tools: ["mcpsecbench"]
+    cve_examples: ["postmark-mcp"]
+
+  ASI05:
+    name: Unexpected Code Execution
+    category: unexpected_code_execution
+    suites: ["agentic/cve_regression"]
+    tools: ["mcpsecbench"]
+    cve_examples: ["Framelink Figma MCP RCE", "Cursor CVEs"]
+
+  ASI06:
+    name: Memory and Context Poisoning
+    category: memory_context_poisoning
+    suites: ["rag"]
+    tools: ["pyrit"]
+
+  ASI07:
+    name: Insecure Inter-Agent Communication
+    category: insecure_agent_communication
+    suites: []
+    tools: []
+    notes: "Testing methodology still maturing. Manual assessment recommended."
+
+  ASI08:
+    name: Cascading Failures
+    category: cascading_failures
+    suites: []
+    tools: []
+    notes: "Requires workflow-specific simulation. No generic scanner available."
+
+  ASI09:
+    name: Human-Agent Trust Exploitation
+    category: human_agent_trust_exploitation
+    suites: []
+    tools: []
+    notes: "Scenario-based testing with careful logging review."
+
+  ASI10:
+    name: Rogue Agents
+    category: rogue_agents
+    suites: []
+    tools: []
+    notes: "Behavioral monitoring and safety evaluation. Methodology still immature."

@@ -1,0 +1,28 @@
+name: Bug report
+description: File a bug
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: input
+    id: phase
+    attributes:
+      label: Phase
+      placeholder: "b0N"
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro steps
+    validations:
+      required: true

@@ -1,0 +1,49 @@
+# Default configuration for red team engagements
+# Higher budgets, more aggressive settings, stealth-aware
+
+apiVersion: aipop/v1
+kind: TargetProfile
+
+metadata:
+  name: redteam-defaults
+  description: Defaults for professional red team engagements
+  tags: [redteam, engagement]
+
+spec:
+  connection:
+    timeoutSeconds: 120  # Allow slow targets
+
+  auth:
+    mode: api_key
+    apiKey:
+      envVar: TARGET_API_KEY
+      format: bearer
+
+  model:
+    provider: openai
+    name: gpt-4o
+    request:
+      temperature: 0.7   # Some randomness for diverse responses
+      maxTokens: 1024
+
+  rateLimits:
+    concurrency:
+      mode: adaptive     # Let AIMD handle it
+      max: 10
+      rpm: 60
+    retries:
+      maxAttempts: 4
+      honorRetryAfter: true
+    delayMs: 0           # No artificial delay unless stealth mode
+
+  budget:
+    maxCostUsd: 50.00    # Engagement-level budget
+    maxRequests: 5000
+    warnAtUsd: 25.00
+    warnAtRequests: 2500
+
+  knowledge:
+    architecture: unknown  # Fill in as you learn from recon
+    # system_prompt: null  # Fill in if obtained during engagement
+    # tool_schemas: null   # Fill in if discovered
+    # known_guardrails: null  # Fill in after fingerprinting

@@ -1,0 +1,38 @@
+run:
+  output_dir: "out"
+  reports_dir: "out/reports"
+  transcripts_dir: "out/transcripts"
+  log_level: "INFO"
+  seed: 42
+
+statistics:
+  # Confidence interval method for ASR calculation
+  # Options: auto (recommended), wilson, clopper-pearson
+  # - auto: Uses Clopper-Pearson for n<20 or extreme proportions, Wilson otherwise
+  # - wilson: Wilson score interval (good for n≥20)
+  # - clopper-pearson: Exact binomial method (conservative, recommended for n<20)
+  confidence_interval_method: auto
+  confidence_level: 0.95  # 95% confidence intervals
+
+rate_limits:
+  openai_rpm: 60  # OpenAI requests per minute
+  anthropic_rpm: 50  # Anthropic requests per minute
+  cost_warning_threshold: 1.0  # Warn if estimated cost > $1
+
+model_storage:
+  # Local model cache (for HuggingFace)
+  cache_dir: ${HF_HOME:-~/.cache/huggingface}
+
+  # Maximum disk usage warning threshold (GB)
+  max_cache_size_gb: 50
+
+  # Ollama configuration
+  ollama:
+    base_url: ${OLLAMA_BASE_URL:-http://localhost:11434}
+    models_dir: ${OLLAMA_MODELS:-~/.ollama/models}
+
+adapters:
+  garak:
+    model: "openai:gpt-4o-mini"
+  art:
+    enabled: true

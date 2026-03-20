@@ -1,0 +1,150 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-purple-ops"
+version = "0.5.0rc1"
+description = "AI security testing tool — template-driven, multi-engine, evidence-grade"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = [{ name = "Tyrian Institute", email = "kenneth@tyrianinstitute.org" }]
+dependencies = [
+    "pyyaml>=6.0.2,<7",
+    "python-dotenv>=1.0.1,<2",
+    "rich>=13.7.1",
+    "tenacity>=8.3.0,<9",
+    "typer>=0.12.5,<1",
+    "jsonschema>=4.23.0,<5",
+    "junit-xml>=1.9.0,<2",
+    "requests>=2.31.0,<3",
+    "tqdm>=4.66.0,<5",
+    "websocket-client>=1.8.0,<2",
+    "platformdirs>=4.0,<5",
+    "jinja2>=3.1,<4",
+]
+
+[project.urls]
+Homepage = "https://github.com/tyrianinstitute/AI-Purple-Ops"
+Repository = "https://github.com/tyrianinstitute/AI-Purple-Ops"
+Issues = "https://github.com/tyrianinstitute/AI-Purple-Ops/issues"
+
+[project.scripts]
+aipop = "aipop.cli.harness:main"
+
+[project.optional-dependencies]
+cloud = [
+    "openai>=1.6.0",
+    "anthropic>=0.8.0",
+    "boto3>=1.34.0",
+]
+local = [
+    "transformers>=4.36.0",
+    "accelerate>=0.25.0",
+    "bitsandbytes>=0.41.0",
+]
+llamacpp = [
+    "llama-cpp-python>=0.2.0",
+]
+reports = [
+    "weasyprint>=60.0",
+    "haralyzer>=2.0",
+    "pillow>=10.0",
+]
+intelligence = [
+    "duckdb>=1.0.0,<2",
+    "scipy>=1.9.0,<2",
+    "pygad>=3.3.0,<4",
+    "alembic>=1.13,<2",
+]
+adversarial = [
+    "torch>=2.1.0,<3",
+    "transformers>=4.36.0",
+    "accelerate>=0.25.0",
+    "nanogcg>=0.1.0",
+]
+pyrit = [
+    "pyrit>=0.9.0",
+]
+pro = [
+    "promptfoo>=0.90.0",
+]
+all-adapters = [
+    "ai-purple-ops[local,llamacpp,cloud]",
+]
+all = [
+    "ai-purple-ops[cloud,intelligence,reports]",
+]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=5.0,<6",
+    "hypothesis>=6.100,<7",
+    "ruff>=0.6,<1",
+    "black>=24.8,<25",
+    "mypy>=1.11,<2",
+    "bandit>=1.7.9,<2",
+    "pip-audit>=2.7,<3",
+    "pre-commit>=3.8,<4",
+    "types-PyYAML>=6.0.12,<7",
+    "types-requests>=2.31,<3",
+]
+# Official attack plugins — install into isolated envs, NOT alongside core.
+# These exist for reference only. Use `aipop plugins install` instead.
+pair-official = [
+    "fschat==0.2.23",
+    "anthropic>=0.8.0",
+    "google-generativeai>=0.3.0",
+    "wandb>=0.16.0",
+    "pandas>=2.0.0",
+]
+autodan-official = [
+    "fschat==0.2.20",
+    "transformers==4.28.0",
+    "sentencepiece>=0.1.99",
+    "nltk>=3.8.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E","F","I","B","UP","S","N","ANN","ARG","C4","DTZ","PIE","PL","PT","RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**.py" = ["S101","ANN201","ANN001","ANN002","ANN003","S603","PLW1510","PLC0415"]
+"src/aipop/utils/logging.py" = ["S101"]
+"src/aipop/cli/**.py" = ["B008","PLR0913"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+strict_optional = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "requires_gpu: marks tests that require GPU (deselect with '-m \"not requires_gpu\"')",
+    "requires_official: marks tests that require official plugin repos installed (deselect with '-m \"not requires_official\"')",
+    "requires_api: marks tests that require API keys (deselect with '-m \"not requires_api\"')",
+    "integration: marks integration tests (deselect with '-m \"not integration\"')",
+]
+
+[tool.setuptools]
+packages = { find = { where = ["src"] } }
+
+[tool.setuptools.package-data]
+"aipop.schemas" = ["*.json"]
+"aipop.suites" = ["**/*.yaml", "**/*.yml"]
+"aipop.policies" = ["*.yaml", "*.yml"]
+"aipop.configs" = ["**/*.yaml", "**/*.yml", "**/*.json", "**/*.sql"]
+"aipop.recipes" = ["**/*.yaml", "**/*.yml"]

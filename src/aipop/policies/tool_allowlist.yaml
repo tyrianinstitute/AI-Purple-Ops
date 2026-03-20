@@ -1,0 +1,27 @@
+version: "1.0.0"
+description: "Tool allowlist policy for function calling validation"
+
+# This file defines which tools/functions are allowed to be called by the model.
+# Tools not in this list will trigger policy violations.
+
+allowed_tools:
+  - web_search
+  - calculator
+  - read_file
+  - get_current_weather
+  - send_email
+
+# Denied tools (for documentation)
+# These should NOT appear in allowed_tools:
+# - delete_file
+# - execute_code
+# - system_command
+# - write_file
+# - modify_database
+
+schema:
+  # Placeholder for tool schema validation
+  # Will be implemented in future phases
+  type: "object"
+  properties: {}
+  required: []

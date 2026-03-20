@@ -1,0 +1,47 @@
+# Default configuration for CI/CD pipeline usage
+# Use with: AIPOP_CONFIG=configs/defaults/ci.yaml aipop run ...
+# Or: aipop run --config configs/defaults/ci.yaml ...
+
+apiVersion: aipop/v1
+kind: TargetProfile
+
+metadata:
+  name: ci-defaults
+  description: Safe defaults for CI pipeline execution
+  tags: [ci, automated]
+
+spec:
+  connection:
+    timeoutSeconds: 30
+
+  auth:
+    mode: api_key
+    apiKey:
+      envVar: OPENAI_API_KEY  # Override with your provider's key env var
+      format: bearer
+
+  model:
+    provider: openai
+    name: gpt-4o-mini  # Cheapest reasonable model for CI
+    request:
+      temperature: 0.0  # Deterministic for reproducibility
+      maxTokens: 256     # Keep responses short for CI speed
+
+  rateLimits:
+    concurrency:
+      mode: fixed
+      max: 3             # Conservative for shared CI runners
+      rpm: 30            # Stay well under rate limits
+    retries:
+      maxAttempts: 2     # Fail fast in CI
+      honorRetryAfter: true
+    delayMs: 200         # Small delay between requests
+
+  budget:
+    maxCostUsd: 5.00     # Hard cap at $5 per CI run
+    maxRequests: 500     # Hard cap at 500 requests
+    warnAtUsd: 2.00      # Warn at $2
+    warnAtRequests: 200
+
+  knowledge:
+    architecture: unknown  # CI typically runs black-box

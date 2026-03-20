@@ -1,0 +1,39 @@
+apiVersion: aipop/v1
+kind: TargetProfile
+
+metadata:
+  name: openai-gpt4o
+  description: OpenAI GPT-4o via standard API
+  tags: [cloud, production]
+
+spec:
+  connection:
+    baseUrl: https://api.openai.com
+    endpointPath: /v1/chat/completions
+    timeoutSeconds: 60
+
+  auth:
+    mode: api_key
+    apiKey:
+      envVar: OPENAI_API_KEY
+      format: bearer
+
+  model:
+    provider: openai
+    name: gpt-4o
+    request:
+      temperature: 0.7
+      maxTokens: 1024
+
+  rateLimits:
+    concurrency:
+      mode: adaptive
+      max: 10
+    retries:
+      maxAttempts: 4
+      honorRetryAfter: true
+
+  scope:
+    notes: "Standard OpenAI API testing"
+    inScope:
+      - api.openai.com

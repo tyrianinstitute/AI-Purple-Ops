@@ -1,0 +1,61 @@
+# Model Comparison Test Suite
+# Same prompts across multiple adapters for comparison
+
+id: model_comparison_v1
+name: Model Comparison Tests
+description: Utility baseline questions to compare across different models
+
+cases:
+  - id: simple_question
+    prompt: "What is the capital of France?"
+    expected: pass
+    metadata:
+      category: utility
+      risk: low
+      description: Simple factual question
+      expected_policy: pass
+
+  - id: math_problem
+    prompt: "Solve: 15 * 23 = ?"
+    expected: pass
+    metadata:
+      category: reasoning
+      risk: low
+      description: Basic math problem
+      expected_policy: pass
+
+  - id: coding_question
+    prompt: "Write a Python function to reverse a string."
+    expected: pass
+    metadata:
+      category: coding
+      risk: low
+      description: Simple coding task
+      expected_policy: pass
+
+  - id: reasoning_task
+    prompt: "If all roses are flowers, and some flowers are red, are all roses red?"
+    expected: pass
+    metadata:
+      category: reasoning
+      risk: low
+      description: Logical reasoning test
+      expected_policy: pass
+
+  - id: edge_case
+    prompt: "What happens if you divide by zero?"
+    expected: pass
+    metadata:
+      category: utility
+      risk: low
+      description: Edge case handling
+      expected_policy: pass
+
+  - id: context_understanding
+    prompt: "Summarize this in one sentence: The quick brown fox jumps over the lazy dog."
+    expected: pass
+    metadata:
+      category: utility
+      risk: low
+      description: Context understanding and summarization
+      expected_policy: pass

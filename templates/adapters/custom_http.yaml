@@ -1,0 +1,61 @@
+# Template for custom HTTP API adapter
+# Copy this file to adapters/my_api.yaml and customize
+#
+# Quick start:
+#   1. Copy: cp templates/adapters/custom_http.yaml adapters/my_api.yaml
+#   2. Edit: vim adapters/my_api.yaml
+#   3. Test: aipop adapter test my_api
+#   4. Use: aipop run --suite quick_test --adapter my_api
+
+adapter:
+  name: my_api
+  type: custom_http
+  description: "Custom API adapter for pentest target"
+
+connection:
+  base_url: https://api.example.com/v1/chat
+  method: POST  # GET, POST, PUT, PATCH, DELETE
+  timeout: 60
+  # Optional custom headers (auth handled separately)
+  headers:
+    Content-Type: application/json
+    User-Agent: Mozilla/5.0
+    # Add any custom headers here
+
+auth:
+  type: bearer  # Options: bearer, api_key, header, none
+  # SECURITY WARNING: Never commit secrets to git!
+  # Always use environment variables
+  token_env_var: MY_API_KEY
+  
+  # For api_key type (query parameter):
+  # api_key_param: api_key
+  
+  # For custom header auth:
+  # header_name: X-API-Key
+
+request:
+  # Field name where prompt/message goes in request body
+  prompt_field: message
+  
+  # Additional fields to include in every request
+  extra_fields:
+    model: gpt-4
+    max_tokens: 1000
+    temperature: 0.7
+    # Add any required fields from your Burp capture
+
+response:
+  # Path to response text in JSON response
+  # Supports nested fields with dot notation: data.output.text
+  text_field: response
+  
+  # Optional: Extract metadata from response
+  # model_field: model
+  # tokens_field: usage.total_tokens
+  # finish_reason_field: finish_reason
+
+# Usage examples:
+# Test: aipop adapter test my_api
+# Scan: aipop run --suite quick_test --adapter my_api
+# Batch: aipop batch-attack prompts.txt --adapter my_api
