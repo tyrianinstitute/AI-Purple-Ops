@@ -305,22 +305,51 @@ def main(
         is_eager=True,
         help="Emit JSON describing tool capabilities, commands, and safe defaults for AI agent discovery.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Show detailed output: detector verdicts, tool call details, timing per test.",
+    ),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        help="Show full trace: raw prompts/responses, adapter metadata, debug info.",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="JSON only to stdout, suppress all Rich output. For CI/CD.",
+    ),
 ) -> None:
     """AI Purple Ops CLI
 
     Exit codes: 0=success, 1=gate failed/threshold breached, 2=config/input error, 3=tool not available, 4=runtime error
     """
+    from aipop.core.verbosity import Verbosity, set_verbosity
+
     # Initialize context object for sharing state across commands
     ctx.ensure_object(dict)
     ctx.obj["config"] = {}
     ctx.obj["output_format"] = output.lower()
 
-    # JSON mode: redirect stdout to stderr so structured data stays clean
-    if output.lower() == "json":
+    # Set verbosity level from flags
+    if quiet or output.lower() == "json":
+        set_verbosity(Verbosity.QUIET)
+    elif trace:
+        set_verbosity(Verbosity.TRACE)
+    elif verbose:
+        set_verbosity(Verbosity.VERBOSE)
+    else:
+        set_verbosity(Verbosity.DEFAULT)
+
+    # JSON/quiet mode: redirect stdout to stderr so structured data stays clean
+    if output.lower() == "json" or quiet:
         import os
         os.environ["AIPOP_JSON_OUTPUT"] = "1"
-        ctx.obj["_real_stdout"] = sys.stdout
-        sys.stdout = sys.stderr
+        if not ctx.obj.get("_real_stdout"):
+            ctx.obj["_real_stdout"] = sys.stdout
+            sys.stdout = sys.stderr
 
 
 def _apply_cli_overrides(
@@ -1739,9 +1768,6 @@ def scan_cmd(
     skip_recon: bool = typer.Option(
         False, "--skip-recon", help="Skip discovery phase, go straight to testing"
     ),
-    quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Suppress Rich output, emit JSON only"
-    ),
 ) -> None:
     """Scan a target — recon, test, report. One command, full picture.
 
@@ -1760,13 +1786,9 @@ def scan_cmd(
     from aipop.core.scanner import ScanOptions, Scanner
     from aipop.loaders.yaml_suite import load_yaml_suite
 
-    is_json = quiet or ctx.obj.get("output_format") == "json"
+    from aipop.core.verbosity import is_quiet as _is_quiet
+    is_json = _is_quiet() or ctx.obj.get("output_format") == "json"
     is_static = adapter_name in ("static", "mock")
-
-    # Quiet mode: redirect stdout→stderr so only JSON hits stdout
-    if quiet and not ctx.obj.get("_real_stdout"):
-        ctx.obj["_real_stdout"] = sys.stdout
-        sys.stdout = sys.stderr
 
     console = Console(stderr=True)
 
@@ -1864,6 +1886,8 @@ def scan_cmd(
 
         def _on_result(r) -> None:
             nonlocal completed, passed_count, failed_count
+            from aipop.core.verbosity import is_verbose, is_trace
+
             completed += 1
             if r.passed:
                 passed_count += 1
@@ -1887,6 +1911,33 @@ def scan_cmd(
                     is_static=is_static,
                     console=console,
                 )
+
+            # Verbose: show detector verdicts and timing
+            if is_verbose():
+                elapsed_ms = r.metadata.get("elapsed_ms", 0)
+                if r.detector_results:
+                    for dr in r.detector_results:
+                        status = "[green]pass[/]" if dr.passed else "[red]FAIL[/]"
+                        console.print(
+                            f"    [dim]detector:[/] {dr.detector_name} {status}"
+                            f" [dim]({len(dr.violations)} violations)[/]",
+                            highlight=False,
+                        )
+                        for v in dr.violations:
+                            console.print(
+                                f"      [dim]→[/] [{v.severity}]{v.severity}[/]: {v.message}",
+                                highlight=False,
+                            )
+                if elapsed_ms > 0:
+                    console.print(f"    [dim]time: {elapsed_ms:.0f}ms[/]", highlight=False)
+
+            # Trace: show raw prompt and response
+            if is_trace():
+                console.print(f"    [dim]prompt:[/] {r.metadata.get('prompt', r.test_id)[:200]}", highlight=False)
+                console.print(f"    [dim]response:[/] {r.response[:300]}", highlight=False)
+                model_meta = r.metadata.get("model_meta", {})
+                if model_meta:
+                    console.print(f"    [dim]model_meta:[/] {model_meta}", highlight=False)
 
             # Progress update every 25 tests
             if completed % 25 == 0 and completed < len(all_cases):
