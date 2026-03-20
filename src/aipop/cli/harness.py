@@ -71,6 +71,80 @@ from aipop.cli.workspace_commands import register_workspace_commands
 register_workspace_commands(app)
 
 
+@app.command("profile")
+def profile_cmd(
+    action: str = typer.Argument("list", help="Action: list, load <name>, save <name>, show <name>"),
+    name: str | None = typer.Argument(None, help="Profile name"),
+    description: str = typer.Option("Custom profile", "--description", "-d", help="Profile description (for save)"),
+) -> None:
+    """Manage configuration profiles — saved option presets.
+
+    Built-in: pentest, bounty, lab, ci. Custom profiles in ~/.aipop/profiles/.
+
+    Examples:
+        aipop profile list
+        aipop profile load pentest
+        aipop profile save my-setup -d "My pentest config"
+    """
+    from rich.console import Console
+    from rich.table import Table
+    from aipop.core.profiles import apply_profile, list_profiles, load_profile, save_profile
+
+    console = Console(stderr=True)
+
+    if action == "list":
+        profiles = list_profiles()
+        table = Table(title="Profiles", border_style="dim")
+        table.add_column("Name", style="bold cyan", min_width=12)
+        table.add_column("Description")
+        table.add_column("Options", style="dim")
+        for p in profiles:
+            opts = ", ".join(f"{k}={v}" for k, v in list(p.options.items())[:3])
+            if len(p.options) > 3:
+                opts += f" (+{len(p.options) - 3})"
+            table.add_row(p.name, p.description, opts)
+        console.print()
+        console.print(table)
+        console.print()
+
+    elif action == "load" and name:
+        try:
+            from aipop.cli.workspace_commands import _load_workspace, _save_workspace
+            profile = load_profile(name)
+            ws = _load_workspace()
+            applied = apply_profile(profile, ws)
+            _save_workspace(ws)
+            console.print(f"  [green]✓[/] Loaded profile: {name}")
+            for opt in applied:
+                console.print(f"    {opt}")
+        except KeyError as e:
+            console.print(f"  [red]✗[/] {e}")
+
+    elif action == "save" and name:
+        from aipop.cli.workspace_commands import _load_workspace
+        ws = _load_workspace()
+        options = {
+            opt.name: opt.value
+            for opt in ws.get_options(include_advanced=True)
+            if opt.source in ("user", "restored", "profile") and opt.value is not None
+        }
+        path = save_profile(name, description, options)
+        console.print(f"  [green]✓[/] Profile saved: {path}")
+
+    elif action == "show" and name:
+        try:
+            profile = load_profile(name)
+            console.print(f"\n  [bold]{profile.name}[/]: {profile.description}")
+            for k, v in profile.options.items():
+                console.print(f"    {k} = {v}")
+            console.print()
+        except KeyError as e:
+            console.print(f"  [red]✗[/] {e}")
+
+    else:
+        console.print("  [yellow]Usage:[/] profile list | load <name> | save <name> | show <name>")
+
+
 @app.command("repl")
 def repl_cmd() -> None:
     """Interactive workbench — the full engagement loop in one session.
