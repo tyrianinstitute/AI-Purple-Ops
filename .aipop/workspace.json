@@ -1,8 +1,0 @@
-{
-  "template_path": "adversarial/tool_misuse",
-  "options": {
-    "TARGET": "http://lab:8080/chat",
-    "ADAPTER": "openai",
-    "MODEL": "gpt-4o-mini"
-  }
-}

@@ -2,6 +2,27 @@
 
 All notable changes to AI Purple Ops will be documented in this file.
 
+## 0.6.0 (2026-03-20) - Expert Control
+
+The pentester takes control. Metasploit-style options paradigm, four-level
+verbosity, deep recon that explains its reasoning, smart errors that tell
+you what to do next.
+
+### Added
+- Options paradigm: `use <template>`, `show options`, `set KEY VALUE` — workspace persists across commands
+- Verbosity ladder: `--quiet` (JSON/CI), default (cinematic), `--verbose` (detectors), `--trace` (raw prompts)
+- Smart error handling: every error shows a guidance panel with numbered fix suggestions
+- Deep recon command: framework detection from error strings, guardrail classification from refusal behavior, capability discovery, model hints with honest confidence labels
+- Proxy support: `--proxy` on OpenAI/Anthropic adapters, respects HTTPS_PROXY env var
+- Cost estimation: `--estimate` shows projected cost before any API calls
+- Five Axioms research document — the foundational first principles of AI agent security
+
+### Changed
+- Global `--quiet`, `--verbose`, `--trace` flags replace per-command quiet parameters
+- Recon module cites sources for every conclusion and flags when evidence is not valid (e.g., timing against static adapter)
+
+---
+
 ## 0.5.0 (2026-03-20) - It Scans Real Things
 
 The tool went from a broken package to a working security scanner in one sprint.

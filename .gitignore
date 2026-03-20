@@ -136,3 +136,4 @@ adapters/*.yaml
 adapters/*.yml
 !adapters/templates/
 !adapters/templates/*.yaml
+.aipop/
