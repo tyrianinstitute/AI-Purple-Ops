@@ -28,6 +28,7 @@ class AnthropicAdapter:
         timeout: int = 30,
         max_retries: int = 3,
         rpm_limit: int = 50,
+        proxy: str | None = None,
     ) -> None:
         """Initialize Anthropic adapter.
 
@@ -37,6 +38,7 @@ class AnthropicAdapter:
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts
             rpm_limit: Requests per minute limit (default: 50)
+            proxy: HTTP/SOCKS5 proxy URL (e.g., http://127.0.0.1:8080)
         """
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -49,12 +51,26 @@ class AnthropicAdapter:
         self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
+        self.proxy = proxy or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
         self.rate_limiter = RateLimiter(rpm=rpm_limit)
 
         try:
             from anthropic import Anthropic
 
-            self.client = Anthropic(api_key=self.api_key, timeout=self.timeout)
+            # Route through proxy if configured
+            http_client = None
+            if self.proxy:
+                try:
+                    import httpx
+                    http_client = httpx.Client(proxy=self.proxy, verify=False)
+                except ImportError:
+                    pass
+
+            self.client = Anthropic(
+                api_key=self.api_key,
+                timeout=self.timeout,
+                http_client=http_client,
+            )
         except ImportError as e:
             msg = "Anthropic SDK not installed. Install with: pip install anthropic"
             raise ImportError(msg) from e

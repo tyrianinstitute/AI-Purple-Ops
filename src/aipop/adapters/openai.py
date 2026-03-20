@@ -29,6 +29,7 @@ class OpenAIAdapter:
         timeout: int = 30,
         max_retries: int = 3,
         rpm_limit: int = 60,
+        proxy: str | None = None,
     ) -> None:
         """Initialize OpenAI adapter.
 
@@ -38,6 +39,7 @@ class OpenAIAdapter:
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts
             rpm_limit: Requests per minute limit (default: 60)
+            proxy: HTTP/SOCKS5 proxy URL (e.g., http://127.0.0.1:8080)
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -50,13 +52,27 @@ class OpenAIAdapter:
         self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
+        self.proxy = proxy or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
         self.rate_limiter = RateLimiter(rpm=rpm_limit)
 
         # Try to import openai
         try:
             import openai
 
-            self.client = openai.OpenAI(api_key=self.api_key, timeout=self.timeout)
+            # Route through proxy if configured (for Burp Suite, mitmproxy, etc.)
+            http_client = None
+            if self.proxy:
+                try:
+                    import httpx
+                    http_client = httpx.Client(proxy=self.proxy, verify=False)
+                except ImportError:
+                    pass  # httpx not available, proxy won't work
+
+            self.client = openai.OpenAI(
+                api_key=self.api_key,
+                timeout=self.timeout,
+                http_client=http_client,
+            )
         except ImportError as e:
             msg = "OpenAI SDK not installed. Install with: pip install openai"
             raise ImportError(msg) from e

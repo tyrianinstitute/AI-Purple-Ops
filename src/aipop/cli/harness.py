@@ -1877,6 +1877,9 @@ def scan_cmd(
     skip_recon: bool = typer.Option(
         False, "--skip-recon", help="Skip discovery phase, go straight to testing"
     ),
+    estimate: bool = typer.Option(
+        False, "--estimate", help="Show estimated cost and test count without running. No API calls."
+    ),
 ) -> None:
     """Scan a target — recon, test, report. One command, full picture.
 
@@ -1977,6 +1980,49 @@ def scan_cmd(
                 is_static=is_static,
                 console=console,
             )
+
+        # Estimate mode — show cost projection, don't run
+        if estimate:
+            try:
+                from aipop.utils.cost_estimator import estimate_cost
+                model_for_est = model_name or "gpt-4o-mini"
+                est_cost = estimate_cost(adapter_name, model_for_est, len(all_cases))
+
+                if is_json:
+                    est_json = {
+                        "status": "estimate",
+                        "tests": len(all_cases),
+                        "adapter": adapter_name,
+                        "model": model_for_est,
+                        "estimated_cost_usd": round(est_cost, 4),
+                        "note": "No API calls made. Actual cost may vary based on response length.",
+                    }
+                    out = ctx.obj.get("_real_stdout") or sys.__stdout__
+                    out.write(json.dumps(est_json, indent=2) + "\n")
+                else:
+                    from rich.panel import Panel
+
+                    lines = [
+                        f"[bold]tests:[/]     {len(all_cases)}",
+                        f"[bold]adapter:[/]   {adapter_name}",
+                        f"[bold]model:[/]     {model_for_est}",
+                        f"[bold]estimated:[/]  ${est_cost:.4f} USD",
+                    ]
+                    if est_cost == 0 and adapter_name in ("static", "mock", "ollama"):
+                        lines.append(f"[dim]{adapter_name} adapter — no API cost[/]")
+                    else:
+                        lines.append("[dim]Actual cost may vary based on response length.[/]")
+                        lines.append("[dim]Verify against provider dashboard for production use.[/]")
+
+                    console.print(
+                        Panel("\n".join(lines), title="[bold cyan]cost estimate[/]",
+                              border_style="cyan", padding=(0, 1))
+                    )
+                    console.print()
+            except ImportError:
+                console.print("[dim]Cost estimator not available.[/]")
+
+            raise typer.Exit(code=0)
 
         # Phase 3: Scan
         _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True, quiet=True)
