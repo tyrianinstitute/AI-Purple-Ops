@@ -152,20 +152,23 @@ class Scanner:
         on_result: Callable[[RunResult], None] | None,
     ) -> list[RunResult]:
         """Create runner, execute tests, track cost."""
-        from aipop.runners.mock import MockRunner
+        from pathlib import Path
+
+        from aipop.runners.live import LiveRunner, LiveRunnerConfig
         from aipop.utils.cost_tracker import CostTracker
 
         cost_tracker = CostTracker()
 
-        runner = MockRunner(
+        runner = LiveRunner(
             adapter=self.adapter,
-            seed=options.seed,
-            detectors=self.detectors if self.detectors else None,
-            transcripts_dir=(
-                __import__("pathlib").Path(options.transcripts_dir)
-                if options.transcripts_dir
-                else None
+            config=LiveRunnerConfig(
+                seed=options.seed,
+                budget=options.budget,
+                transcripts_dir=(
+                    Path(options.transcripts_dir) if options.transcripts_dir else None
+                ),
             ),
+            detectors=self.detectors if self.detectors else None,
             orchestrator=options.orchestrator,
             judge=options.judge,
             judge_threshold=options.judge_threshold,
