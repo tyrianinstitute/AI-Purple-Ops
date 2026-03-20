@@ -7,12 +7,10 @@ for findings. No wasted vertical space.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 # Severity styles — calibrated for dark terminals (the pentester default)
 SEVERITY_STYLE = {
@@ -76,9 +74,7 @@ def recon_panel(
         suites_str += f" (+{len(recommended_suites) - 5})"
 
     content = (
-        f"[bold]target:[/]  {target}\n"
-        f"[bold]surface:[/] {caps_line}\n"
-        f"[bold]suites:[/]  {suites_str}"
+        f"[bold]target:[/]  {target}\n[bold]surface:[/] {caps_line}\n[bold]suites:[/]  {suites_str}"
     )
 
     console.print(
@@ -108,7 +104,7 @@ def finding_line(
     console = console or Console(stderr=True)
 
     sev = severity.upper()
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    ts = datetime.now(UTC).strftime("%H:%M:%S")
 
     if is_static:
         badge = "[dim] SIM  [/]"
@@ -130,7 +126,7 @@ def pass_line(
 ) -> None:
     """Print a passing test as a dim one-liner (optional, for verbose mode)."""
     console = console or Console(stderr=True)
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    ts = datetime.now(UTC).strftime("%H:%M:%S")
     console.print(f"  [dim]{ts}  pass  {test_id}[/]", highlight=False)
 
 

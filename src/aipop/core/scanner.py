@@ -7,9 +7,10 @@ import os
 import platform
 import subprocess
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 from aipop import __version__
 from aipop.core.adapters import Adapter
@@ -102,10 +103,7 @@ class Scanner:
             ScanResult with all results and metadata.
         """
         started_at = datetime.now(UTC)
-        run_id = (
-            f"run-{started_at.strftime('%Y%m%dT%H%M%S')}"
-            f"-{os.getpid()}-{uuid.uuid4().hex[:6]}"
-        )
+        run_id = f"run-{started_at.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
         # If caller passed pre-computed results (harness suites), skip execution
         if test_cases and isinstance(test_cases[0], RunResult):
@@ -124,7 +122,10 @@ class Scanner:
         passed = total - failed
 
         metadata = self._build_metadata(
-            options, run_id, started_at, finished_at,
+            options,
+            run_id,
+            started_at,
+            finished_at,
         )
 
         return ScanResult(
@@ -182,12 +183,8 @@ class Scanner:
             if result.metadata and "model_meta" in result.metadata:
                 model_meta = result.metadata["model_meta"]
                 cost = model_meta.get("cost_usd", 0.0)
-                tokens = model_meta.get("tokens_prompt", 0) + model_meta.get(
-                    "tokens_completion", 0
-                )
-                model_id = model_meta.get(
-                    "model", getattr(self.adapter, "model", "unknown")
-                )
+                tokens = model_meta.get("tokens_prompt", 0) + model_meta.get("tokens_completion", 0)
+                model_id = model_meta.get("model", getattr(self.adapter, "model", "unknown"))
                 if cost > 0 or tokens > 0:
                     cost_tracker.track(
                         operation="run",
@@ -246,9 +243,7 @@ class Scanner:
 
             suite_path = get_package_data_path("suites") / suite
             if suite_path.is_dir():
-                content = b"".join(
-                    sorted(p.read_bytes() for p in suite_path.rglob("*.yaml"))
-                )
+                content = b"".join(sorted(p.read_bytes() for p in suite_path.rglob("*.yaml")))
                 return hashlib.sha256(content).hexdigest()[:12]
         except Exception:
             pass

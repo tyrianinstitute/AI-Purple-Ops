@@ -2,6 +2,30 @@
 
 All notable changes to AI Purple Ops will be documented in this file.
 
+## 0.5.0 (2026-03-20) - It Scans Real Things
+
+The tool went from a broken package to a working security scanner in one sprint.
+Scanner engine extracted, LiveRunner built, `aipop scan` command shipping,
+behavioral detection that catches what models DO instead of what they SAY.
+
+### Added
+- Scanner engine (`core/scanner.py`) — shared interface for CLI, MCP, and Python library
+- LiveRunner — production runner with budget enforcement, per-test error isolation
+- `aipop scan` — one command: recon → test → report with cinematic output
+- Behavioral detection primitives: tool argument matching, behavior matching, state diff across turns
+- Cinematic terminal output: Nuclei-style severity badges, streaming findings, recon panel, summary
+- Static adapter (renamed from mock) — clearly labeled as pipeline validation, not real findings
+- Attack axiom research: 5 architectural seams, confused deputy patterns, evidence catalog
+- Adversarial suites rewritten as axiom reference implementations (not refusal tests)
+- README rewritten as one story: scan, understand, prove
+
+### Changed
+- CLI `run` command routes through Scanner engine
+- Adversarial suites test behavioral seams, not model refusal
+- Evidence pack format aligned with bounty submission structure (5-field format)
+
+---
+
 ## 0.5.0-rc.1 (2026-03-19) - Fix the Foundation
 
 The foundation was broken. Install didn't work, the package name was wrong,
