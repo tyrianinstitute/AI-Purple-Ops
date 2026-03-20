@@ -1741,6 +1741,115 @@ def verify_suite_cmd(
         raise typer.Exit(code=1) from None
 
 
+@app.command("recon")
+def recon_cmd(
+    ctx: typer.Context,
+    adapter_name: str = typer.Option(
+        "static", "--adapter", "-a",
+        help="Adapter: static, openai, anthropic, ollama, huggingface",
+    ),
+    model_name: str | None = typer.Option(
+        None, "--model", "-m", help="Model name",
+    ),
+    response_mode: str = typer.Option(
+        "smart", "--response-mode", help="Static adapter response mode",
+    ),
+) -> None:
+    """Deep reconnaissance — fingerprint framework, guardrails, capabilities.
+
+    Runs the AI PTES recon cycle: framework detection, guardrail
+    classification, capability discovery, and model hints. Shows what
+    was probed, what was found, and what attack approach to use.
+
+    Examples:
+        aipop recon --adapter openai --model gpt-4o-mini
+        aipop recon --adapter ollama --model llama3
+        aipop recon --adapter static
+    """
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from aipop.core.verbosity import is_quiet as _is_quiet
+
+    console = Console(stderr=True)
+    is_json = _is_quiet() or ctx.obj.get("output_format") == "json"
+
+    try:
+        cfg = load_config()
+        adapter = _create_adapter_from_cli(
+            adapter_name, model_name, cfg.run.seed, response_mode=response_mode,
+        )
+
+        if not is_json:
+            console.print("\n  [bold cyan]◎ recon[/] — probing target...\n")
+
+        from aipop.intelligence.recon import full_recon
+        result = full_recon(adapter)
+
+        if is_json:
+            out = ctx.obj.get("_real_stdout") or sys.__stdout__
+            out.write(json.dumps(result.to_dict(), indent=2) + "\n")
+        else:
+            # Framework
+            fw_style = "green" if result.framework != "unknown" else "dim"
+            lines = [
+                f"[bold]target:[/]     {result.target}",
+                f"[bold]framework:[/]  [{fw_style}]{result.framework}[/] ({result.framework_confidence})",
+            ]
+
+            # Guardrail
+            gr_style = "green" if result.guardrail_type != "unknown" else "dim"
+            lines.append(
+                f"[bold]guardrail:[/]  [{gr_style}]{result.guardrail_type}[/] ({result.guardrail_confidence})"
+            )
+
+            # Capabilities
+            cap_parts = []
+            for cap, detected in result.capabilities.items():
+                icon = "[green]●[/]" if detected else "[dim]○[/]"
+                cap_parts.append(f"{icon} {cap.replace('_', ' ')}")
+            if cap_parts:
+                lines.append(f"[bold]surface:[/]    {'  '.join(cap_parts)}")
+
+            # Model hints
+            if result.model_hints:
+                lines.append(f"[bold]model:[/]      {'; '.join(result.model_hints)}")
+
+            console.print(
+                Panel("\n".join(lines), title="[bold cyan]recon results[/]",
+                      border_style="cyan", padding=(0, 1))
+            )
+
+            # Recommended approach
+            if result.recommended_approach:
+                console.print()
+                console.print("  [bold]recommended approach:[/]")
+                for i, rec in enumerate(result.recommended_approach, 1):
+                    console.print(f"    [cyan]{i}.[/] {rec}")
+                console.print()
+
+            # Evidence (verbose only)
+            from aipop.core.verbosity import is_verbose
+            if is_verbose():
+                if result.framework_evidence:
+                    console.print("  [dim]framework evidence:[/]")
+                    for ev in result.framework_evidence:
+                        console.print(f"    [dim]→ {ev}[/]")
+                if result.guardrail_evidence:
+                    console.print("  [dim]guardrail evidence:[/]")
+                    for ev in result.guardrail_evidence:
+                        console.print(f"    [dim]→ {ev}[/]")
+                console.print()
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        from aipop.cli.errors import handle_error
+        exit_code = handle_error(e, console)
+        raise typer.Exit(code=exit_code) from None
+
+
 @app.command("scan")
 def scan_cmd(
     ctx: typer.Context,
