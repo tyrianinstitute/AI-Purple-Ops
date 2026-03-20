@@ -56,8 +56,15 @@ class TestMorphEngine:
         result = engine.morph("hello world", "zero_width")
         assert "\u200b" in result
 
-    def test_placeholder_strategies_labeled(self):
+    def test_semantic_strategies_have_sources(self):
         engine = MorphEngine()
-        semantic = engine.get_strategy("semantic_reframe")
-        assert semantic is not None
-        assert "PLACEHOLDER" in semantic.description
+        authority = engine.get_strategy("authority_frame")
+        assert authority is not None
+        assert authority.category == "semantic"
+        assert authority.source  # has a research source citation
+
+    def test_evaluation_reframe_has_effectiveness(self):
+        engine = MorphEngine()
+        eval_strat = engine.get_strategy("evaluation_reframe")
+        assert eval_strat is not None
+        assert "71.6%" in eval_strat.effectiveness  # Bad Likert Judge data
