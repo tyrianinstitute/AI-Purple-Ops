@@ -2,6 +2,29 @@
 
 All notable changes to AI Purple Ops will be documented in this file.
 
+## 0.6.5 (2026-03-20) - The Workbench
+
+The full engagement loop works interactively. REPL, morph engine, diff,
+tool invocation, inspect, profiles. Red team, purple team, blue team —
+from recon to report in one session.
+
+### Added
+- Interactive REPL (`aipop repl`) — persistent session with use/set/run/morph/inspect/diff/tool/history/export, tab completion, context-aware prompt
+- Morph engine with 17 research-backed strategies across four failure families: encoding (5), semantic (7), token (3), composition (2) — including Bad Likert Judge evaluation reframe (71.6% ASR)
+- `aipop morph` CLI command with --strategy, --list, and --chain for composed transforms
+- `aipop diff` for purple team attack→fix→rescan cycle — shows new, resolved, and regressed findings
+- `aipop tool` for external tool invocation — detect/invoke PyRIT, Promptfoo, Garak via subprocess with output capture
+- `aipop inspect` for finding-level detail — response text, detector verdicts, violations, model metadata
+- `aipop profile` for saved config presets — built-in pentest, bounty, lab, ci profiles plus custom ~/.aipop/profiles/
+- Session history records every operation for replay and export
+- Workspace→run bridge: `use → set → run` executes from workspace without --suite flag
+
+### Changed
+- Run command reads workspace options as defaults (CLI flags override)
+- Morph strategies cite research sources (SemanticCamo, Bad Likert Judge, PyRIT taxonomy, Promptfoo Layer pattern)
+
+---
+
 ## 0.6.0 (2026-03-20) - Expert Control
 
 The pentester takes control. Metasploit-style options paradigm, four-level
