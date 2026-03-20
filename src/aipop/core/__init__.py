@@ -8,6 +8,7 @@ from .gates import Gate, GateResult, ThresholdGate
 from .models import ModelResponse, RunResult, TestCase
 from .reporters import Reporter
 from .runners import Runner
+from .scanner import ScanOptions, ScanResult, Scanner
 
 __all__ = [
     "Adapter",
@@ -20,6 +21,9 @@ __all__ = [
     "Reporter",
     "RunResult",
     "Runner",
+    "ScanOptions",
+    "ScanResult",
+    "Scanner",
     "TestCase",
     "ThresholdGate",
 ]

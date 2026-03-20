@@ -1924,10 +1924,6 @@ def run_cmd(
 
         preflight(str(config) if config else None)
 
-        # Generate run ID
-        now = datetime.now(UTC)
-        run_id = f"run-{now.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
-
         # Check if this is a harness-backed suite (deterministic protocol tests)
         from aipop.harnesses.registry import is_harness_suite, run_harness_suite
         if is_harness_suite(suite):
@@ -2123,54 +2119,43 @@ def run_cmd(
             print_info(f"Initializing judge: {judge}")
             judge_model = _create_judge_from_cli(judge, adapter=adapter)
 
-        # Initialize cost tracker
-        from aipop.utils.cost_tracker import CostTracker
+        # Run scan through Scanner engine
+        from aipop.core.scanner import ScanOptions, Scanner
 
-        cost_tracker = CostTracker()
+        scanner = Scanner(adapter=adapter, detectors=detectors)
+        scan_options = ScanOptions(
+            suite=suite,
+            seed=cfg.run.seed,
+            response_mode=response_mode,
+            orchestrator=orchestrator,
+            judge=judge_model,
+            judge_threshold=judge_threshold,
+            budget=budget,
+            transcripts_dir=cfg.run.transcripts_dir,
+        )
 
-        # Skip runner if harness already produced results
+        # Harness suites pass pre-computed RunResults; YAML suites pass TestCases
+        scan_input = results if results is not None else test_cases
+
+        # Progress bar callback — Scanner never prints, CLI owns display
+        progress_results: list = []
         if results is not None:
-            # Harness suite -- results already populated
-            pass
+            # Harness suite — results already computed, no progress needed
+            scan_result = scanner.scan(scan_input, scan_options)
         else:
-            runner = MockRunner(
-                adapter=adapter,
-                seed=cfg.run.seed,
-                detectors=detectors if detectors else None,
-                transcripts_dir=Path(cfg.run.transcripts_dir),
-                orchestrator=orchestrator,
-                judge=judge_model,
-                judge_threshold=judge_threshold,
-            )
-
-            # Execute tests with progress tracking
-            results = []
             with test_progress(len(test_cases), suite, show_progress=progress) as tracker:
-                for result in runner.execute_many(test_cases):
-                    tracker.update(result)
+                def _on_result(r: RunResult) -> None:
+                    tracker.update(r)
 
-                # Track cost from adapter response metadata
-                if result.metadata and "model_meta" in result.metadata:
-                    model_meta = result.metadata["model_meta"]
-                    cost = model_meta.get("cost_usd", 0.0)
-                    tokens = model_meta.get("tokens_prompt", 0) + model_meta.get(
-                        "tokens_completion", 0
-                    )
-                    model_id = model_meta.get("model", getattr(adapter, "model", "unknown"))
+                scan_result = scanner.scan(scan_input, scan_options, on_result=_on_result)
+                progress_results = tracker.get_results()
 
-                    if cost > 0 or tokens > 0:
-                        cost_tracker.track(
-                            operation="run",
-                            tokens=tokens,
-                            model=model_id,
-                            cost=cost,
-                        )
-
-            results = tracker.get_results()
+        results = scan_result.results
+        run_id = scan_result.run_id
 
         # Display ASR summary if judge is enabled
         if judge_model:
-            asr_summary = runner.get_asr_summary()
+            asr_summary = scanner.get_asr_summary()
             if asr_summary["enabled"]:
                 from rich.console import Console
                 from rich.panel import Panel
@@ -2218,7 +2203,7 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
 
         # Display cost summary (suppress for mock adapter -- costs are meaningless)
         is_mock = isinstance(adapter, MockAdapter)
-        cost_summary = cost_tracker.get_summary()
+        cost_summary = scanner.get_cost_summary()
         if cost_summary["total_cost"] > 0 and not is_mock:
             from rich.console import Console
             from rich.table import Table
@@ -2265,46 +2250,13 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
         reports_dir = Path(cfg.run.reports_dir)
         reports_dir.mkdir(parents=True, exist_ok=True)
 
-        # Add run metadata to summary
-        import hashlib
-        import platform
-        import subprocess as _sp
-
-        # Compute suite file hash for reproducibility
-        suite_hash = ""
-        try:
-            suite_path = get_package_data_path("suites") / suite
-            if suite_path.is_dir():
-                content = b"".join(sorted(p.read_bytes() for p in suite_path.rglob("*.yaml")))
-                suite_hash = hashlib.sha256(content).hexdigest()[:12]
-        except Exception:
-            pass
-
-        # Get git commit hash if in a repo
-        git_commit = ""
-        try:
-            git_commit = _sp.check_output(
-                ["git", "rev-parse", "--short", "HEAD"], stderr=_sp.DEVNULL, text=True
-            ).strip()
-        except Exception:
-            pass
-
-        finished_at = datetime.now(UTC).isoformat(timespec="seconds")
-
+        # Build summary metadata from Scanner result
         summary_metadata = {
-            "run_id": run_id,
-            "suite": suite,
-            "suite_hash": suite_hash,
-            "version": __version__,
-            "utc_started": now.isoformat(timespec="seconds"),
-            "utc_finished": finished_at,
-            "seed": cfg.run.seed,
-            "response_mode": response_mode,
-            "adapter": adapter_name or "mock",
-            "model": model_name or "mock",
-            "git_commit": git_commit,
-            "python_version": platform.python_version(),
-            "platform": platform.system(),
+            "run_id": scan_result.run_id,
+            "suite": scan_result.suite,
+            **scan_result.metadata,
+            "adapter": adapter_name or scan_result.adapter_name,
+            "model": model_name or scan_result.model_name,
         }
 
         # Write reports based on format flag
