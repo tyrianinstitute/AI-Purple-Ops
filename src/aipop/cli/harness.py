@@ -601,7 +601,8 @@ def _create_adapter_from_cli(
     from aipop.core.adapters import Adapter as AdapterClass
 
     adapter_map: dict[str, type[AdapterClass]] = {
-        "mock": MockAdapter,
+        "static": MockAdapter,
+        "mock": MockAdapter,  # backward compat alias
         "openai": OpenAIAdapter,
         "anthropic": AnthropicAdapter,
         "huggingface": HuggingFaceAdapter,
@@ -616,8 +617,8 @@ def _create_adapter_from_cli(
     adapter_class = adapter_map[adapter_name]
 
     # Build adapter config based on adapter type
-    if adapter_name == "mock":
-        # Mock adapter uses response_mode, not model
+    if adapter_name in ("static", "mock"):
+        # Static/mock adapter uses response_mode, not model
         return adapter_class(seed=seed, response_mode=response_mode)
     elif adapter_name == "openai":
         config = {"model": model_name or "gpt-4o-mini"}
@@ -1701,6 +1702,266 @@ def verify_suite_cmd(
 
         traceback.print_exc()
         raise typer.Exit(code=1) from None
+
+
+@app.command("scan")
+def scan_cmd(
+    ctx: typer.Context,
+    adapter_name: str = typer.Option(
+        "static",
+        "--adapter",
+        "-a",
+        help="Adapter: static (no LLM), openai, anthropic, ollama, huggingface",
+    ),
+    model_name: str | None = typer.Option(
+        None, "--model", "-m", help="Model name (gpt-4o-mini, claude-3-5-sonnet, etc.)"
+    ),
+    response_mode: str = typer.Option(
+        "smart", "--response-mode", help="Mock adapter response mode (smart, refuse, echo, random)"
+    ),
+    suite: str | None = typer.Option(
+        None, "--suite", "-s", help="Override auto-selected suite (e.g., adversarial, rag, tools)"
+    ),
+    budget: float | None = typer.Option(
+        None, "--budget", help="Budget cap in USD — stops the scan when exceeded"
+    ),
+    proxy: str | None = typer.Option(
+        None, "--proxy", help="HTTP/SOCKS5 proxy (e.g., http://127.0.0.1:8080)"
+    ),
+    skip_recon: bool = typer.Option(
+        False, "--skip-recon", help="Skip discovery phase, go straight to testing"
+    ),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress Rich output, emit JSON only"
+    ),
+) -> None:
+    """Scan a target — recon, test, report. One command, full picture.
+
+    Examples:
+        aipop scan --adapter mock
+        aipop scan --adapter openai --model gpt-4o-mini --budget 1.00
+        aipop scan --adapter ollama --model llama3
+    """
+    import time as _time
+
+    from rich.console import Console
+
+    from aipop.cli.display import (
+        finding_line, mode_banner, progress_line, recon_panel, scan_summary,
+    )
+    from aipop.core.scanner import ScanOptions, Scanner
+    from aipop.loaders.yaml_suite import load_yaml_suite
+
+    is_json = quiet or ctx.obj.get("output_format") == "json"
+    is_static = adapter_name in ("static", "mock")
+
+    # Quiet mode: redirect stdout→stderr so only JSON hits stdout
+    if quiet and not ctx.obj.get("_real_stdout"):
+        ctx.obj["_real_stdout"] = sys.stdout
+        sys.stdout = sys.stderr
+
+    console = Console(stderr=True)
+
+    try:
+        cfg = load_config()
+
+        # Create adapter
+        try:
+            adapter = _create_adapter_from_cli(
+                adapter_name, model_name, cfg.run.seed, proxy,
+                response_mode=response_mode,
+            )
+        except (ValueError, RuntimeError, ImportError) as e:
+            if is_json:
+                _emit_json_error(ctx, str(e))
+            else:
+                print_error(f"Adapter failed: {e}")
+            raise typer.Exit(code=2) from None
+        except typer.BadParameter as e:
+            print_error(str(e))
+            raise typer.Exit(code=2) from None
+
+        # Phase 1: Recon
+        discovery_result = None
+        recommended_suites = ["adversarial"]
+
+        if not skip_recon:
+            try:
+                from aipop.intelligence.discovery import TargetDiscovery
+
+                discovery = TargetDiscovery()
+                discovery_result = discovery.discover(adapter, verbose=False)
+                recommended_suites = discovery_result.recommended_suites
+
+                if not is_json:
+                    recon_panel(
+                        target=discovery_result.target,
+                        capabilities=discovery_result.capabilities,
+                        recommended_suites=recommended_suites,
+                        console=console,
+                    )
+            except Exception as e:
+                if not is_json:
+                    print_warning(f"Recon skipped: {e}")
+                recommended_suites = ["adversarial"]
+
+        if suite:
+            recommended_suites = [suite]
+
+        # Phase 2: Load test cases
+        all_cases = []
+        for s in recommended_suites:
+            try:
+                all_cases.extend(load_yaml_suite(s))
+            except Exception:
+                pass
+
+        if not all_cases:
+            if is_json:
+                _emit_json_error(ctx, "No test cases found for target")
+            else:
+                print_error("No test cases found. Try: aipop scan --suite adversarial --adapter static")
+            raise typer.Exit(code=2) from None
+
+        # Mode banner — the first thing the recording viewer sees
+        if not is_json:
+            mode_banner(
+                adapter_name=adapter_name,
+                model_name=model_name or getattr(adapter, "model", "unknown"),
+                test_count=len(all_cases),
+                is_static=is_static,
+                console=console,
+            )
+
+        # Phase 3: Scan
+        _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True)
+
+        scanner = Scanner(adapter=adapter, detectors=detectors)
+        scan_options = ScanOptions(
+            suite=",".join(recommended_suites),
+            seed=cfg.run.seed,
+            response_mode=response_mode,
+            budget=budget,
+            transcripts_dir=cfg.run.transcripts_dir,
+        )
+
+        scan_start = _time.time()
+        completed = 0
+        passed_count = 0
+        failed_count = 0
+
+        def _on_result(r) -> None:
+            nonlocal completed, passed_count, failed_count
+            completed += 1
+            if r.passed:
+                passed_count += 1
+            else:
+                failed_count += 1
+
+            if is_json:
+                return
+
+            # Stream findings as one-liners — the Nuclei experience
+            if not r.passed:
+                sev = r.metadata.get("risk", "unknown").upper()
+                cat = r.metadata.get("category", "unknown")
+                technique = r.metadata.get("technique", "")
+                desc = f"{cat} via {technique}" if technique else f"{cat} test failed"
+                finding_line(
+                    test_id=r.test_id,
+                    severity=sev,
+                    category=cat,
+                    description=desc,
+                    console=console,
+                )
+
+            # Progress update every 25 tests
+            if completed % 25 == 0 and completed < len(all_cases):
+                progress_line(completed, len(all_cases), passed_count, failed_count, console)
+
+        scan_result = scanner.scan(all_cases, scan_options, on_result=_on_result)
+
+        elapsed = _time.time() - scan_start
+
+        # Phase 4: Reports
+        preflight(None)
+        reports_dir = Path(cfg.run.reports_dir)
+        reports_dir.mkdir(parents=True, exist_ok=True)
+
+        json_path = reports_dir / "summary.json"
+        from aipop.reporters.json_reporter import JSONReporter
+
+        json_reporter = JSONReporter()
+        json_reporter.write_summary(scan_result.results, str(json_path))
+
+        with json_path.open("r", encoding="utf-8") as f:
+            summary_data = json.load(f)
+        summary_data.update(scan_result.metadata)
+        summary_data["run_id"] = scan_result.run_id
+        summary_data["suite"] = scan_result.suite
+        summary_data["adapter"] = adapter_name
+        summary_data["model"] = model_name or scan_result.model_name
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
+
+        from aipop.reporters.junit_reporter import JUnitReporter
+
+        junit_path = reports_dir / "junit.xml"
+        JUnitReporter(suite_name=scan_result.suite).write_summary(
+            scan_result.results, str(junit_path)
+        )
+
+        # Phase 5: Output
+        if is_json:
+            json_output = scan_result.to_dict()
+            json_output["reports"] = {
+                "summary": str(json_path),
+                "junit": str(junit_path),
+            }
+            for k in ["harmful_output_rate", "critical_violation_rate", "cost_usd"]:
+                if k in summary_data:
+                    json_output[k] = summary_data[k]
+            out = ctx.obj.get("_real_stdout") or sys.__stdout__
+            out.write(json.dumps(json_output, indent=2) + "\n")
+        else:
+            severity_counts: dict[str, int] = {}
+            for r in scan_result.results:
+                if not r.passed:
+                    sev = r.metadata.get("risk", "unknown").upper()
+                    severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+            cost = scanner.get_cost_summary()
+            total_cost = cost.get("total_cost", 0.0) if cost else 0.0
+
+            scan_summary(
+                total=scan_result.total,
+                passed=scan_result.passed,
+                failed=scan_result.failed,
+                severity_counts=severity_counts,
+                evidence_path=str(json_path),
+                adapter_name=adapter_name,
+                model_name=model_name or scan_result.model_name,
+                elapsed_secs=elapsed,
+                cost_usd=total_cost,
+                is_static=is_static,
+                console=console,
+            )
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        if is_json:
+            _emit_json_error(ctx, str(e))
+        else:
+            print_error(f"Scan failed: {e}")
+        raise typer.Exit(code=4) from None
+
+
+def _emit_json_error(ctx: typer.Context, message: str) -> None:
+    """Emit a structured JSON error to stdout."""
+    error_json = json.dumps({"status": "error", "error": message}, indent=2)
+    out = ctx.obj.get("_real_stdout") or sys.__stdout__
+    out.write(error_json + "\n")
 
 
 @app.command("run")
