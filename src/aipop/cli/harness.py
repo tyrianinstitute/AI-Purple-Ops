@@ -2190,7 +2190,7 @@ def _emit_json_error(ctx: typer.Context, message: str) -> None:
 @app.command("run")
 def run_cmd(
     ctx: typer.Context,
-    suite: str = typer.Option("normal", "--suite", "-s", help="Suite name to execute."),
+    suite: str | None = typer.Option(None, "--suite", "-s", help="Suite name to execute. Defaults to workspace template or 'normal'."),
     engagement_id: str | None = typer.Option(
         None, "--engagement", help="Engagement ID to run against (uses engagement's target and records results)."
     ),
@@ -2330,12 +2330,44 @@ def run_cmd(
 ) -> None:
     """Execute test suite with real runner, adapters, and reporters.
 
+    If a workspace is loaded (via `aipop use`), run reads options from it.
+    CLI flags override workspace values. Workspace → CLI → default.
+
     Examples:
+        aipop use adversarial/rag_injection && aipop set ADAPTER openai && aipop run
         aipop run --suite adversarial --adapter openai --model gpt-4o
-        aipop run --suite redteam --adapter anthropic --model claude-3-5-sonnet
         aipop run --suite normal --adapter mock --response-mode smart
     """
     try:
+        # Workspace integration: if a workspace is loaded, use its values
+        # as defaults. CLI flags override workspace. This enables the
+        # use → set → run workflow.
+        from aipop.cli.workspace_commands import _load_workspace
+
+        ws = _load_workspace()
+        if ws.is_loaded and suite is None:
+            # No --suite flag: use workspace template
+            suite = ws.template.path
+            print_info(f"Running from workspace: {ws.template.name} ({ws.template.case_count} cases)")
+        if ws.is_loaded:
+            # Workspace provides defaults — CLI flags override
+            if adapter_name is None:
+                adapter_name = ws.get("ADAPTER")
+            if model_name is None:
+                model_name = ws.get("MODEL")
+            if seed is None and ws.get("SEED") != 42:
+                seed = ws.get("SEED")
+            if budget is None:
+                budget = ws.get("BUDGET")
+            if proxy is None:
+                proxy = ws.get("PROXY")
+            if response_mode == "smart" and ws.get("RESPONSE_MODE") != "smart":
+                response_mode = ws.get("RESPONSE_MODE")
+
+        # Default suite if nothing from workspace or CLI
+        if suite is None:
+            suite = "normal"
+
         # Initialize context-based features (stealth, traffic capture)
         session_id = f"sess_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 

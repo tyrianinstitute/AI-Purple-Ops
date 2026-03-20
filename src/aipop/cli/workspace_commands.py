@@ -61,7 +61,7 @@ def _save_workspace(ws) -> None:
         "options": {
             opt.name: opt.value
             for opt in ws.get_options(include_advanced=True)
-            if opt.source in ("user", "restored") and opt.value != opt.default
+            if opt.source in ("user", "restored")
         },
     }
     _WORKSPACE_STATE_FILE.write_text(json.dumps(state, indent=2, default=str))
