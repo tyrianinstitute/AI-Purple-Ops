@@ -70,6 +70,135 @@ from aipop.cli.workspace_commands import register_workspace_commands
 
 register_workspace_commands(app)
 
+
+@app.command("tool")
+def tool_cmd(
+    ctx: typer.Context,
+    tool_name: str = typer.Argument(help="Tool to invoke: pyrit, promptfoo, garak, or 'list'"),
+    args: list[str] = typer.Argument(None, help="Arguments to pass to the tool"),
+) -> None:
+    """Invoke external security tools — PyRIT, Promptfoo, Garak.
+
+    Subprocess invocation with output capture. Results saved to out/tool_runs/.
+
+    Examples:
+        aipop tool list                              # show installed tools
+        aipop tool promptfoo redteam --help          # pass args to promptfoo
+        aipop tool garak --model_type ollama         # run garak
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    from aipop.cli.tools_invoke import detect_tools, invoke_tool
+
+    console = Console(stderr=True)
+
+    if tool_name == "list":
+        tools = detect_tools()
+        table = Table(title="External Security Tools", border_style="dim")
+        table.add_column("Tool", style="bold cyan")
+        table.add_column("Installed", justify="center")
+        table.add_column("Version")
+        table.add_column("Install")
+
+        for t in tools:
+            status = "[green]●[/]" if t.installed else "[red]○[/]"
+            ver = t.version or ""
+            table.add_row(t.name, status, ver, t.install_hint)
+
+        console.print()
+        console.print(table)
+        console.print()
+        return
+
+    try:
+        console.print(f"\n  [dim]invoking {tool_name}...[/]\n")
+        result = invoke_tool(tool_name, args or [])
+
+        if result.exit_code == 0:
+            console.print(f"  [green]✓[/] {tool_name} completed ({result.elapsed_secs:.1f}s)")
+        else:
+            console.print(f"  [red]✗[/] {tool_name} exited with code {result.exit_code} ({result.elapsed_secs:.1f}s)")
+
+        if result.stdout:
+            console.print(f"\n{result.stdout[:5000]}")
+        if result.stderr and result.exit_code != 0:
+            console.print(f"\n[dim]{result.stderr[:2000]}[/]")
+        if result.output_path:
+            console.print(f"\n  [dim]output saved: {result.output_path}[/]\n")
+
+    except (ValueError, RuntimeError) as e:
+        from aipop.cli.errors import handle_error
+        handle_error(e, console)
+        raise typer.Exit(code=3) from None
+
+
+@app.command("inspect")
+def inspect_cmd(
+    ctx: typer.Context,
+    index: int = typer.Argument(-1, help="History entry index to inspect (-1 = last)"),
+) -> None:
+    """Inspect a previous result in detail — responses, tool calls, detectors.
+
+    Shows the full details of the last scan, recon, or tool invocation
+    from the session history.
+
+    Examples:
+        aipop inspect        # inspect last result
+        aipop inspect 0      # inspect first entry
+    """
+    from rich.console import Console
+    from rich.panel import Panel
+
+    console = Console(stderr=True)
+
+    # For now, inspect reads from the latest summary.json
+    # Full session history integration comes with the REPL
+    from pathlib import Path
+
+    summary_path = Path("out/reports/summary.json")
+    if not summary_path.exists():
+        console.print("[yellow]No results to inspect.[/] Run a scan first: aipop scan --adapter static")
+        return
+
+    import json as _json
+    data = _json.loads(summary_path.read_text())
+
+    results = data.get("results", [])
+    failed = [r for r in results if not r.get("passed")]
+
+    console.print(f"\n  [bold]Last scan:[/] {data.get('suite', '?')} | {len(results)} tests | {len(failed)} findings\n")
+
+    for r in failed[:10]:
+        meta = r.get("metadata", {})
+        lines = [
+            f"[bold]test:[/]     {r['test_id']}",
+            f"[bold]category:[/] {meta.get('category', '?')}",
+            f"[bold]severity:[/] {meta.get('risk', '?')}",
+            f"[bold]response:[/] {r.get('response', '')[:200]}",
+        ]
+
+        # Detector details
+        for dr in r.get("detector_results", []):
+            status = "[green]pass[/]" if dr.get("passed") else "[red]FAIL[/]"
+            lines.append(f"[bold]detector:[/] {dr['detector_name']} {status}")
+            for v in dr.get("violations", []):
+                lines.append(f"  → [{v.get('severity', '?')}] {v.get('message', '')}")
+
+        # Model metadata
+        model_meta = meta.get("model_meta", {})
+        if model_meta:
+            lines.append(f"[dim]model: {model_meta.get('model', '?')} | tokens: {model_meta.get('tokens', '?')} | {meta.get('elapsed_ms', 0):.0f}ms[/]")
+
+        console.print(
+            Panel("\n".join(lines), title=f"[bold red]{r['test_id']}[/]",
+                  border_style="red", padding=(0, 1))
+        )
+        console.print()
+
+    if len(failed) > 10:
+        console.print(f"  [dim]... and {len(failed) - 10} more findings. See out/reports/summary.json[/]\n")
+
 # Create plugins subcommand group
 plugins_app = typer.Typer(
     name="plugins",
@@ -1848,6 +1977,39 @@ def recon_cmd(
         from aipop.cli.errors import handle_error
         exit_code = handle_error(e, console)
         raise typer.Exit(code=exit_code) from None
+
+
+@app.command("diff")
+def diff_cmd(
+    ctx: typer.Context,
+    before: str = typer.Argument(help="Path to earlier summary.json"),
+    after: str = typer.Argument(help="Path to later summary.json"),
+) -> None:
+    """Compare two scan results — show new, resolved, and regressed findings.
+
+    The purple team cycle: scan → fix → rescan → diff.
+
+    Examples:
+        aipop diff out/reports/summary_v1.json out/reports/summary_v2.json
+        aipop --output json diff before.json after.json
+    """
+    from aipop.core.verbosity import is_quiet as _is_quiet
+
+    try:
+        from aipop.reporters.run_diff import diff_runs, print_diff
+
+        is_json = _is_quiet() or ctx.obj.get("output_format") == "json"
+        result = diff_runs(before, after)
+        print_diff(result, output_json=is_json)
+
+    except FileNotFoundError as e:
+        from aipop.cli.errors import handle_error
+        handle_error(e)
+        raise typer.Exit(code=2) from None
+    except Exception as e:
+        from aipop.cli.errors import handle_error
+        handle_error(e)
+        raise typer.Exit(code=4) from None
 
 
 @app.command("scan")
