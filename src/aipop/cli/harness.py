@@ -1805,10 +1805,12 @@ def scan_cmd(
             if is_json:
                 _emit_json_error(ctx, str(e))
             else:
-                print_error(f"Adapter failed: {e}")
+                from aipop.cli.errors import handle_error
+                handle_error(e, console)
             raise typer.Exit(code=2) from None
         except typer.BadParameter as e:
-            print_error(str(e))
+            from aipop.cli.errors import handle_error
+            handle_error(e, console)
             raise typer.Exit(code=2) from None
 
         # Phase 1: Recon
@@ -2017,7 +2019,9 @@ def scan_cmd(
         if is_json:
             _emit_json_error(ctx, str(e))
         else:
-            print_error(f"Scan failed: {e}")
+            from aipop.cli.errors import handle_error
+            exit_code = handle_error(e, console)
+            raise typer.Exit(code=exit_code) from None
         raise typer.Exit(code=4) from None
 
 
