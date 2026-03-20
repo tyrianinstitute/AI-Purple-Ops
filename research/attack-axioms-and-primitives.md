@@ -194,9 +194,29 @@ This maps to STRIDE:
 
 ---
 
-## 8. Immediate Next Steps
+## 8. Related Research
 
-1. Build TYR-826 (three behavioral primitives)
-2. Rewrite suites (TYR-795) using the seam-to-suite mapping above
-3. README rewrite (TYR-796) — tell the story, show the workbench vision
-4. GATE S1 (TYR-808) — ship v0.5.0
+### Recon Fingerprinting Axioms (TYR-828)
+Full research at: `tyrian-ai-labs/shared/research/recon-fingerprinting-axioms.md`
+
+Five recon axioms from OpenAI Deep Research (March 2026):
+1. Fingerprint the wrapper first, then the model
+2. Fingerprinting is attribution, not banner-grabbing
+3. Three guardrail architectures are distinguishable from behavior
+4. Error strings are the strongest fingerprint
+5. Latency is a side channel, not a banner
+
+These govern the AI PTES recon cycle and feed into TYR-827 (recon
+depth implementation for S2a).
+
+### Attack Evidence Catalog
+Full research at: `tyrian-ai-labs/shared/research/attack-evidence-catalog.md`
+
+CVE chains, bounty market intelligence, STRIDE mapping, and the
+5-field evidence pack format aligned with bounty submission.
+
+### AI Recon Doctrine
+Full research at: `tyrian-ai-labs/shared/research/ai-recon-doctrine.md`
+
+The 6-phase AI PTES cycle: detect → map → fingerprint model →
+fingerprint guardrails → detect framework → map trust architecture.

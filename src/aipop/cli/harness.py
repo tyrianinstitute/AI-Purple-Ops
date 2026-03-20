@@ -65,6 +65,11 @@ from aipop.utils.security import SecurityError, validate_config_path
 
 app = typer.Typer(add_completion=False, help="AI Purple Ops CLI")
 
+# Register workspace commands (use, show, set)
+from aipop.cli.workspace_commands import register_workspace_commands
+
+register_workspace_commands(app)
+
 # Create plugins subcommand group
 plugins_app = typer.Typer(
     name="plugins",
