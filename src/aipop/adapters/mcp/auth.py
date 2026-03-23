@@ -158,10 +158,17 @@ class AuthHandler:
         Returns:
             True if token was refreshed, False otherwise
 
-        Note:
-            This is a placeholder for OAuth 2.1 token refresh flow.
+        .. warning::
+            EXPERIMENTAL: This is a placeholder. OAuth 2.1 token refresh is not
+            yet implemented. Calling this method always returns False.
             Implementation planned for v1.1.2.
         """
+        import warnings
+        warnings.warn(
+            "refresh_token() is experimental and not yet production-ready. "
+            "OAuth 2.1 with automatic refresh is planned for v1.1.2.",
+            stacklevel=2,
+        )
         logger.warning(
             "Token refresh not yet implemented. "
             "OAuth 2.1 with automatic refresh planned for v1.1.2."

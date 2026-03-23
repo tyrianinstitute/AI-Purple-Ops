@@ -12,6 +12,7 @@ Modes (mapped from Burp Intruder):
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import tempfile
@@ -200,21 +201,33 @@ def run_fuzz(
 
             craft_pdf(payload=payload_text, strategy=strategy, output=tmp_path, doc_id=run_id)
 
-            # 2. Extract text from PDF (for upload as text)
+            # 2. Upload binary PDF (multipart first, base64 JSON fallback)
+            filename = f"fuzz-{run_id}.pdf"
             try:
-                from pypdf import PdfReader
-                reader = PdfReader(tmp_path)
-                extracted = "\n".join(p.extract_text() or "" for p in reader.pages)
-            except ImportError:
-                extracted = payload_text
-
-            # 3. Upload
-            resp = requests.post(
-                upload_url,
-                json={"content": extracted, "filename": f"fuzz-{run_id}.txt"},
-                timeout=30,
-            )
-            if resp.status_code == 200:
+                with open(tmp_path, "rb") as pdf_file:
+                    resp = requests.post(
+                        upload_url,
+                        files={"file": (filename, pdf_file, "application/pdf")},
+                        timeout=30,
+                    )
+                if resp.status_code not in (200, 201):
+                    raise requests.RequestException(
+                        f"Multipart upload returned {resp.status_code}"
+                    )
+            except (requests.RequestException, ConnectionError):
+                # Fallback: base64-encoded PDF in JSON body
+                with open(tmp_path, "rb") as pdf_file:
+                    pdf_bytes = pdf_file.read()
+                resp = requests.post(
+                    upload_url,
+                    json={
+                        "content": base64.b64encode(pdf_bytes).decode(),
+                        "filename": filename,
+                        "encoding": "base64",
+                    },
+                    timeout=30,
+                )
+            if resp.status_code in (200, 201):
                 attempt.uploaded = True
                 data = resp.json()
                 attempt.chunks_ingested = data.get("chunks_ingested", 0)

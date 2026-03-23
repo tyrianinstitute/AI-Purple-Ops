@@ -103,9 +103,7 @@ def craft_pdf(
     elif strategy == "metadata":
         _apply_metadata(pdf, cover_text, payload)
     elif strategy == "annotation":
-        _apply_hidden_text(pdf, cover_text, payload)  # same visual, different field
-        # Also inject into metadata for double coverage
-        pdf.set_title(payload[:200])
+        _apply_annotation(pdf, cover_text, payload)
     else:
         raise ValueError(f"Unknown strategy: {strategy}. Use: hidden_text, metadata, annotation")
 
@@ -139,6 +137,29 @@ def _apply_hidden_text(pdf: Any, cover_text: str, payload: str) -> None:
     pdf.set_xy(10, 10)  # Reset to top
     pdf.set_font("Helvetica", size=11)
     pdf.set_text_color(0, 0, 0)  # Black
+    for line in cover_text.split("\n"):
+        pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
+
+
+def _apply_annotation(pdf: Any, cover_text: str, payload: str) -> None:
+    """Strategy: inject payload into PDF text annotations.
+
+    Uses fpdf2's text_annotation() to embed the payload as a PDF comment/note
+    annotation. Text extractors and some RAG pipelines read annotation contents.
+    The annotation is rendered as a tiny invisible marker on the page.
+    """
+    pdf.add_page()
+
+    # Add a text annotation containing the payload (near top-left, minimal size)
+    # fpdf2's text_annotation creates a /Text annotation in the PDF
+    pdf.text_annotation(
+        x=1, y=1,
+        text=payload,
+    )
+
+    # Normal visible content on top
+    pdf.set_font("Helvetica", size=11)
+    pdf.set_text_color(0, 0, 0)
     for line in cover_text.split("\n"):
         pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
 

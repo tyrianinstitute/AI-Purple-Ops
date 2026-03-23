@@ -30,6 +30,8 @@ class ScanOptions:
     judge_threshold: float = 8.0
     budget: float | None = None
     transcripts_dir: str | None = None
+    rate_limit: float = 10.0  # requests per second
+    concurrency: int = 5  # max parallel requests
 
 
 @dataclass
@@ -173,6 +175,8 @@ class Scanner:
             orchestrator=options.orchestrator,
             judge=options.judge,
             judge_threshold=options.judge_threshold,
+            rate_limit=options.rate_limit,
+            concurrency=options.concurrency,
         )
 
         results: list[RunResult] = []

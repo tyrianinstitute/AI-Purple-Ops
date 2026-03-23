@@ -6,7 +6,9 @@ timeouts on top of the adapter's own retry/rate-limit/backoff logic.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -18,6 +20,37 @@ from aipop.core.detectors import Detector, DetectorResult
 from aipop.core.models import ModelResponse, RunResult, TestCase
 
 log = logging.getLogger(__name__)
+
+# Connection error types that should be reported as ERROR, not VULNERABLE
+CONNECTION_ERROR_TYPES = (
+    ConnectionError,
+    ConnectionResetError,
+    ConnectionRefusedError,
+    ConnectionAbortedError,
+    BrokenPipeError,
+    OSError,
+)
+
+try:
+    import requests
+    CONNECTION_ERROR_TYPES = CONNECTION_ERROR_TYPES + (  # type: ignore[assignment]
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ReadTimeout,
+        requests.exceptions.ConnectTimeout,
+        requests.exceptions.Timeout,
+    )
+except ImportError:
+    pass
+
+try:
+    import httpx
+    CONNECTION_ERROR_TYPES = CONNECTION_ERROR_TYPES + (  # type: ignore[assignment]
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.ConnectTimeout,
+    )
+except ImportError:
+    pass
 
 
 class BudgetExceededError(Exception):
@@ -51,6 +84,8 @@ class LiveRunner:
         orchestrator: Any | None = None,
         judge: Any | None = None,
         judge_threshold: float = 8.0,
+        rate_limit: float = 10.0,
+        concurrency: int = 5,
     ) -> None:
         self.adapter = adapter
         self.config = config or LiveRunnerConfig()
@@ -58,6 +93,13 @@ class LiveRunner:
         self.orchestrator = orchestrator
         self.judge = judge
         self.judge_threshold = judge_threshold
+        self.rate_limit = rate_limit
+        self.concurrency = concurrency
+
+        # Rate limiter state: minimum interval between requests
+        self._min_interval = 1.0 / rate_limit if rate_limit > 0 else 0.0
+        self._last_request_time: float = 0.0
+        self._rate_lock = threading.Lock()
 
         # Cost tracking across the run
         self._cumulative_cost: float = 0.0
@@ -139,6 +181,29 @@ class LiveRunner:
                 },
             )
 
+        except CONNECTION_ERROR_TYPES as e:
+            # Connection failures are infrastructure errors, not vulnerabilities.
+            # Report as ERROR, not as a failed (vulnerable) test.
+            elapsed_ms = (time.time() - start_time) * 1000
+            if self.orchestrator:
+                try:
+                    self.orchestrator.reset_state()
+                except Exception:
+                    pass
+
+            return RunResult(
+                test_id=test_case.id,
+                response=f"ERROR: connection failed — {type(e).__name__}: {e}",
+                passed=True,  # Not a vulnerability finding
+                metadata={
+                    **test_case.metadata,
+                    "error": f"ERROR: connection failed — {e}",
+                    "error_type": type(e).__name__,
+                    "error_class": "connection",
+                    "elapsed_ms": round(elapsed_ms, 2),
+                },
+            )
+
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
             if self.orchestrator:
@@ -159,10 +224,46 @@ class LiveRunner:
                 },
             )
 
+    def _wait_for_rate_limit(self) -> None:
+        """Sleep if needed to respect the rate limit."""
+        if self._min_interval <= 0:
+            return
+        with self._rate_lock:
+            now = time.time()
+            elapsed = now - self._last_request_time
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_request_time = time.time()
+
     def execute_many(self, cases: list[TestCase]) -> Iterator[RunResult]:
-        """Execute tests, yielding results as they complete."""
-        for case in cases:
-            yield self.execute(case)
+        """Execute tests, yielding results as they complete.
+
+        Uses concurrency (thread pool) and rate limiting (sleep-based)
+        when concurrency > 1. Falls back to sequential execution for
+        concurrency == 1.
+        """
+        if self.concurrency <= 1:
+            # Sequential: simple rate-limited loop
+            for case in cases:
+                self._wait_for_rate_limit()
+                yield self.execute(case)
+        else:
+            # Concurrent: use thread pool with semaphore for concurrency cap
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            def _run_one(tc: TestCase) -> RunResult:
+                self._wait_for_rate_limit()
+                return self.execute(tc)
+
+            # Submit all, yield in completion order
+            futures_to_case = {}
+            with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+                for case in cases:
+                    fut = pool.submit(_run_one, case)
+                    futures_to_case[fut] = case
+
+                for fut in as_completed(futures_to_case):
+                    yield fut.result()
 
     def get_asr_summary(self) -> dict[str, Any]:
         """Return ASR summary — same interface as MockRunner."""

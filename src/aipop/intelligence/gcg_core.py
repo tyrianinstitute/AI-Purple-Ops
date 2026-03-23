@@ -311,8 +311,9 @@ class GCGOptimizer:
         # In real black-box mode, these would be evaluated via adapter
         results = []
         for i, suffix in enumerate(seed_suffixes[:10]):
-            # Estimated loss (would be computed via adapter in real implementation)
-            estimated_loss = 0.5 + (i * 0.1)  # Placeholder
+            # WARNING: Placeholder loss — real loss requires adapter-based evaluation.
+            # This synthetic gradient is only useful for seed ranking, not optimization.
+            estimated_loss = 0.5 + (i * 0.1)  # Placeholder: not a real loss signal
             results.append((suffix, estimated_loss))
 
         return results

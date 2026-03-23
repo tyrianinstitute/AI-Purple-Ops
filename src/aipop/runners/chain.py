@@ -21,6 +21,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -374,10 +375,10 @@ class ChainRunner:
         duration_str = step_def.get("duration", step_def.get("wait", "2s"))
         if isinstance(duration_str, str):
             duration_str = ctx.interpolate(duration_str)
-            if duration_str.endswith("s"):
-                seconds = float(duration_str[:-1])
-            elif duration_str.endswith("ms"):
+            if duration_str.endswith("ms"):
                 seconds = float(duration_str[:-2]) / 1000
+            elif duration_str.endswith("s"):
+                seconds = float(duration_str[:-1])
             else:
                 seconds = float(duration_str)
         else:

@@ -983,6 +983,25 @@ def _create_adapter_from_cli(
         return adapter_class(**config)
 
 
+def _parse_header_flags(headers: list[str]) -> dict[str, str]:
+    """Parse --header 'Key: Value' flags into a dict.
+
+    Args:
+        headers: List of "Key: Value" strings from CLI
+
+    Returns:
+        Dict mapping header names to values
+    """
+    parsed: dict[str, str] = {}
+    for h in headers:
+        if ":" not in h:
+            print_warning(f"Ignoring malformed header (missing ':'): {h}")
+            continue
+        key, _, value = h.partition(":")
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
 def _parse_orch_opts(orch_opts: str | None) -> dict[str, bool]:
     """Parse comma-separated orchestrator options.
 
@@ -2221,6 +2240,16 @@ def scan_cmd(
     estimate: bool = typer.Option(
         False, "--estimate", help="Show estimated cost and test count without running. No API calls."
     ),
+    header: list[str] | None = typer.Option(
+        None, "--header", "-H",
+        help="Extra header as 'Key: Value' (repeatable). Passed to adapter requests.",
+    ),
+    rate_limit: float = typer.Option(
+        10.0, "--rate-limit", help="Max requests per second (default: 10)"
+    ),
+    concurrency: int = typer.Option(
+        5, "--concurrency", help="Max parallel requests (default: 5)"
+    ),
 ) -> None:
     """Scan a target — recon, test, report. One command, full picture.
 
@@ -2313,6 +2342,14 @@ def scan_cmd(
             from aipop.cli.errors import handle_error
             handle_error(e, console)
             raise typer.Exit(code=2) from None
+
+        # Inject --header values into adapter's custom_headers
+        if header:
+            _parsed_headers = _parse_header_flags(header)
+            if hasattr(adapter, "custom_headers") and isinstance(adapter.custom_headers, dict):
+                adapter.custom_headers.update(_parsed_headers)
+            else:
+                adapter.custom_headers = _parsed_headers
 
         # Phase 1: Recon
         discovery_result = None
@@ -2432,6 +2469,8 @@ def scan_cmd(
             response_mode=response_mode,
             budget=budget,
             transcripts_dir=cfg.run.transcripts_dir,
+            rate_limit=rate_limit,
+            concurrency=concurrency,
         )
 
         scan_start = _time.time()
@@ -3257,6 +3296,16 @@ def run_cmd(
     random_delay: str | None = typer.Option(
         None, "--random-delay", help="Random delay range in seconds (e.g., '1-3')"
     ),
+    header: list[str] | None = typer.Option(
+        None, "--header", "-H",
+        help="Extra header as 'Key: Value' (repeatable). Passed to adapter requests.",
+    ),
+    rate_limit: float = typer.Option(
+        10.0, "--rate-limit", help="Max requests per second (default: 10)"
+    ),
+    concurrency: int = typer.Option(
+        5, "--concurrency", help="Max parallel requests (default: 5)"
+    ),
 ) -> None:
     """Execute test suite with real runner, adapters, and reporters.
 
@@ -3468,6 +3517,14 @@ def run_cmd(
             print_error(str(e))
             raise typer.Exit(code=1) from None
 
+        # Inject --header values into adapter's custom_headers
+        if header:
+            _parsed_headers = _parse_header_flags(header)
+            if hasattr(adapter, "custom_headers") and isinstance(adapter.custom_headers, dict):
+                adapter.custom_headers.update(_parsed_headers)
+            else:
+                adapter.custom_headers = _parsed_headers
+
         # Create orchestrator if specified
         orchestrator = None
         try:
@@ -3592,6 +3649,8 @@ def run_cmd(
             judge_threshold=judge_threshold,
             budget=budget,
             transcripts_dir=cfg.run.transcripts_dir,
+            rate_limit=rate_limit,
+            concurrency=concurrency,
         )
 
         # Harness suites pass pre-computed RunResults; YAML suites pass TestCases

@@ -296,6 +296,13 @@ class MCPToolOrchestrator:
         # 4. Parse responses for flags
         # 5. Chain tool calls based on hints
 
+        import warnings
+        warnings.warn(
+            "MCPToolOrchestrator.execute() is experimental and not yet production-ready. "
+            "PyRIT integration is pending.",
+            stacklevel=2,
+        )
+
         return {
             "success": False,
             "message": "Orchestrator execution not yet fully integrated with PyRIT",

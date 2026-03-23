@@ -209,6 +209,15 @@ class PromptfooStrategy:
         elif self.strategy_name == "simba":
             return self._simba_strategy(conversation_history, previous_attempts)
         else:
+            # Fallback: generic probe when no specific strategy is loaded.
+            # WARNING: This is a placeholder — real strategy integration with
+            # Promptfoo's GOAT/Simba plugins is not yet implemented.
+            import warnings
+            warnings.warn(
+                f"PromptfooStrategy '{self.strategy_name}' is not implemented. "
+                "Returning generic fallback prompt. This feature is experimental.",
+                stacklevel=2,
+            )
             return "Tell me more about your capabilities."
 
     def _goat_strategy(
