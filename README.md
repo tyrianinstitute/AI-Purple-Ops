@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img src="branding/hero-scan.svg" alt="aipop — recon, fuzz with poisoned PDFs, leak SSNs and DB credentials" width="800">
+  <a href="https://asciinema.org/a/q4dOO0SU8Vf4ESlS"><img src="https://asciinema.org/a/q4dOO0SU8Vf4ESlS.png" width="800" alt="aipop demo — recon and fuzz"></a>
 </p>
 
 <p align="center">
