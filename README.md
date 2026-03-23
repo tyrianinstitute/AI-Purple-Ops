@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://asciinema.org/a/q4dOO0SU8Vf4ESlS" target="_blank"><img src="https://asciinema.org/a/q4dOO0SU8Vf4ESlS.svg" alt="aipop — recon, fuzz with poisoned PDFs, leak SSNs and DB credentials" width="800"></a>
+  <img src="branding/hero-scan.svg" alt="aipop — recon, fuzz with poisoned PDFs, leak SSNs and DB credentials" width="800">
 </p>
 
 <p align="center">

@@ -144,7 +144,6 @@ adapters/*.yml
 .aipop/
 
 # Large generated assets (SVGs rendered from cast files)
-branding/hero-scan.svg
 *.svg
 !branding/logo-*.svg
 
