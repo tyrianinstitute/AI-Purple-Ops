@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, MofNCompleteColumn
 
 # Severity styles — calibrated for dark terminals (the pentester default)
 SEVERITY_STYLE = {
@@ -35,18 +36,21 @@ def mode_banner(
     model_name: str,
     test_count: int,
     is_static: bool = False,
+    target_url: str | None = None,
     console: Console | None = None,
 ) -> None:
     """Print the scan mode header — first thing the viewer sees."""
     console = console or Console(stderr=True)
 
     if is_static:
-        mode_line = "[dim]mode:[/] [yellow]STATIC[/] [dim](no LLM — canned responses for pipeline validation)[/]"
+        mode_line = "[yellow]STATIC[/] [dim](pipeline validation, no LLM)[/]"
+    elif target_url:
+        mode_line = f"[green]LIVE[/] → [bold]{target_url}[/]"
     else:
-        mode_line = f"[dim]mode:[/] [green]LIVE[/] [dim]({adapter_name}/{model_name})[/]"
+        mode_line = f"[green]LIVE[/] [dim]({adapter_name}/{model_name})[/]"
 
     console.print()
-    console.print(f"  [bold cyan]◎ aipop scan[/]  {mode_line}")
+    console.print(f"  [bold magenta]▸ aipop scan[/]  {mode_line}")
     console.print(f"  [dim]{test_count} tests loaded[/]")
     console.print()
 
@@ -55,26 +59,57 @@ def recon_panel(
     target: str,
     capabilities: dict[str, bool],
     recommended_suites: list[str],
+    details: dict[str, str] | None = None,
     console: Console | None = None,
 ) -> None:
-    """Display recon/discovery results — compact, capability indicators."""
+    """Display recon/discovery results — compact, capability grid."""
     console = console or Console(stderr=True)
+    details = details or {}
 
-    # Capabilities as a single line with icons
+    # Capabilities as a clean grid
     cap_parts = []
     for cap, detected in capabilities.items():
-        icon = "[green]●[/]" if detected else "[dim]○[/]"
         label = cap.replace("_", " ").replace("system prompt visible", "sysinfo leak")
-        cap_parts.append(f"{icon} {label}")
+        if detected:
+            cap_parts.append(f"[green]■[/] {label}")
+        else:
+            cap_parts.append(f"[dim]□ {label}[/]")
 
-    caps_line = "  ".join(cap_parts)
+    # Two-column layout for capabilities
+    caps_lines = []
+    for i in range(0, len(cap_parts), 2):
+        left = cap_parts[i] if i < len(cap_parts) else ""
+        right = cap_parts[i + 1] if i + 1 < len(cap_parts) else ""
+        if right:
+            caps_lines.append(f"  {left:<40s}{right}")
+        else:
+            caps_lines.append(f"  {left}")
+
+    caps_block = "\n".join(caps_lines)
+
+    # Key findings from discovery — one-liner assessments
+    findings = []
+    if "file_upload" in details and isinstance(details["file_upload"], str):
+        if "NO content scanning" in details["file_upload"]:
+            findings.append("[red]▸ Upload: unguarded — injection payloads accepted into RAG pipeline[/]")
+        elif "ACTIVE" in details["file_upload"]:
+            findings.append("[green]▸ Upload: content scanning active[/]")
+    if capabilities.get("rag_retrieval"):
+        findings.append("[yellow]▸ RAG: grounded responses detected — knowledge base is attack surface[/]")
+
+    findings_block = ""
+    if findings:
+        findings_block = "\n[bold]findings:[/]\n" + "\n".join(f"  {f}" for f in findings)
 
     suites_str = ", ".join(recommended_suites[:5])
     if len(recommended_suites) > 5:
         suites_str += f" (+{len(recommended_suites) - 5})"
 
     content = (
-        f"[bold]target:[/]  {target}\n[bold]surface:[/] {caps_line}\n[bold]suites:[/]  {suites_str}"
+        f"[bold]target:[/]  {target}\n"
+        f"[bold]surface:[/]\n{caps_block}"
+        f"{findings_block}\n"
+        f"[bold]suites:[/]  {suites_str}"
     )
 
     console.print(
@@ -93,6 +128,7 @@ def finding_line(
     severity: str,
     category: str,
     description: str,
+    latency_ms: float = 0,
     is_static: bool = False,
     console: Console | None = None,
 ) -> None:
@@ -105,6 +141,7 @@ def finding_line(
 
     sev = severity.upper()
     ts = datetime.now(UTC).strftime("%H:%M:%S")
+    latency_str = f" [dim]({latency_ms:.0f}ms)[/]" if latency_ms > 0 else ""
 
     if is_static:
         badge = "[dim] SIM  [/]"
@@ -115,7 +152,7 @@ def finding_line(
     else:
         badge = SEVERITY_BADGE.get(sev, SEVERITY_BADGE["UNKNOWN"])
         console.print(
-            f"  [dim]{ts}[/] {badge} [bold]{test_id}[/] [dim]|[/] {category} [dim]|[/] {description}",
+            f"  [dim]{ts}[/] {badge} [bold]{test_id}[/] [dim]|[/] {category} [dim]|[/] {description}{latency_str}",
             highlight=False,
         )
 
@@ -130,6 +167,27 @@ def pass_line(
     console.print(f"  [dim]{ts}  pass  {test_id}[/]", highlight=False)
 
 
+def create_scan_progress(total: int, console: Console | None = None) -> Progress:
+    """Create a Rich progress bar for scan execution.
+
+    Returns a Progress context manager. Use with:
+        with create_scan_progress(total) as progress:
+            task = progress.add_task("scanning", total=total)
+            progress.update(task, advance=1)
+    """
+    console = console or Console(stderr=True)
+    return Progress(
+        SpinnerColumn("dots", style="magenta"),
+        TextColumn("[bold magenta]scanning[/]"),
+        BarColumn(bar_width=30, style="dim", complete_style="magenta", finished_style="green"),
+        MofNCompleteColumn(),
+        TextColumn("[dim]•[/]"),
+        TimeRemainingColumn(compact=True),
+        console=console,
+        transient=False,
+    )
+
+
 def progress_line(
     completed: int,
     total: int,
@@ -137,7 +195,7 @@ def progress_line(
     failed: int,
     console: Console | None = None,
 ) -> None:
-    """Print inline progress counter — updates every N tests."""
+    """Print inline progress counter — fallback when progress bar isn't used."""
     console = console or Console(stderr=True)
     pct = (completed / total * 100) if total > 0 else 0
     console.print(
@@ -155,6 +213,7 @@ def scan_summary(
     evidence_path: str | None = None,
     adapter_name: str = "unknown",
     model_name: str = "unknown",
+    target_url: str | None = None,
     elapsed_secs: float = 0.0,
     cost_usd: float = 0.0,
     is_static: bool = False,
@@ -173,9 +232,17 @@ def scan_summary(
         status = "[bold green]CLEAN[/]"
         border = "green"
 
+    # Target display — prefer URL, fall back to adapter/model
+    if target_url:
+        target_display = target_url
+    elif adapter_name and adapter_name not in ("unknown", "None", "static", "mock"):
+        target_display = f"{adapter_name}/{model_name}"
+    else:
+        target_display = model_name
+
     lines = [
         f"[bold]status:[/]  {status}",
-        f"[bold]target:[/]  {adapter_name}/{model_name}",
+        f"[bold]target:[/]  {target_display}",
         f"[bold]tests:[/]   {total} ({passed} passed, {failed} failed)",
     ]
 
@@ -208,7 +275,19 @@ def scan_summary(
 
     if failed > 0 and not is_static:
         lines.append("")
-        lines.append("[dim]next: aipop gate --generate-evidence[/]")
+        lines.append("[bold]next:[/] [magenta]aipop gate --generate-evidence[/]")
+        lines.append("")
+        lines.append("[dim]this was a default scan. go deeper:[/]")
+        lines.append("[dim]  aipop morph  — transform payloads through 17 bypass strategies[/]")
+        lines.append("[dim]  aipop repl   — interactive workbench for manual exploration[/]")
+        lines.append("[dim]  aipop diff   — compare before/after defenses (purple team)[/]")
+
+    if not is_static and failed == 0:
+        lines.append("")
+        lines.append("[dim]clean on default scan. try targeted suites:[/]")
+        lines.append("[dim]  aipop scan <target> --suite rag_injection[/]")
+        lines.append("[dim]  aipop scan <target> --suite encoding_chains[/]")
+        lines.append("[dim]  aipop morph 'your payload' --strategy evaluation_reframe[/]")
 
     content = "\n".join(lines)
     console.print()

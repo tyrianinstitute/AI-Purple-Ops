@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
 import requests
 
-from aipop.adapters.connection_helpers import check_ollama_connection
 from aipop.core.models import ModelResponse
+
+
+def _check_ollama_connection(base_url: str) -> tuple[bool, list[str]]:
+    """Check if Ollama is reachable and list available models."""
+    try:
+        resp = requests.get(f"{base_url}/api/tags", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        models = [m.get("name", m.get("model", "")) for m in data.get("models", [])]
+        return True, models
+    except Exception:
+        return False, []
 
 
 class OllamaAdapter:
@@ -17,31 +29,40 @@ class OllamaAdapter:
     Runs models locally via Ollama API - no cloud, no API keys, no costs.
     Perfect for testing without exploding your PC.
 
+    Respects OLLAMA_HOST env var for base URL (same as Ollama CLI).
+    Point this at any Ollama-compatible API — including lab targets
+    that expose /api/generate and /api/tags endpoints.
+
     Args:
         model: Model name (e.g., "tinyllama", "phi3:mini", "gemma:2b")
-        base_url: Ollama API base URL (default: http://localhost:11434)
+        base_url: Ollama API base URL (default: OLLAMA_HOST or http://localhost:11434)
         timeout: Request timeout in seconds
     """
 
     def __init__(
         self,
         model: str = "tinyllama",
-        base_url: str = "http://localhost:11434",
+        base_url: str | None = None,
         timeout: int = 120,
         **kwargs: Any,
     ) -> None:
         """Initialize Ollama adapter."""
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        self.base_url = (
+            base_url
+            or os.environ.get("OLLAMA_HOST")
+            or "http://localhost:11434"
+        ).rstrip("/")
         self.timeout = timeout
 
         # Test connection and check if model exists
-        connected, available_models = check_ollama_connection(self.base_url)
+        connected, available_models = _check_ollama_connection(self.base_url)
         if not connected:
             raise RuntimeError(
                 f"Ollama not running at {self.base_url}\n"
                 f"Start it with: ollama serve\n"
-                f"Or install from: https://ollama.com"
+                f"Or install from: https://ollama.com\n"
+                f"Or set OLLAMA_HOST to point at your target"
             )
 
         if model not in available_models:

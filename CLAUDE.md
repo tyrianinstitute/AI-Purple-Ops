@@ -44,10 +44,14 @@ aipop diff before.json after.json      # Run-to-run comparison
 aipop import-payloads wordlist -i payloads.txt -o suites/custom/imported.yaml
 aipop import-payloads run -i out/reports/summary.json --filter failed
 
-# Harness-backed suites (deterministic, no LLM needed)
-aipop run --suite agentic/asi03_principal_propagation --adapter mock
-aipop run --suite agentic/asi02_tool_interception --adapter mock
-aipop run --suite agentic/asi05_execution_sandbox --adapter mock
+# Scan a live target (one command, auto-detects everything)
+aipop scan http://localhost:8000/chat
+
+# Multi-step indirect injection chain
+aipop chain suites/chains/indirect_upload.yaml --target http://localhost:8000
+
+# Agentic CVE regression (deterministic, no LLM needed)
+aipop run --suite agentic/cve_regression --adapter mock
 ```
 
 ## Output locations

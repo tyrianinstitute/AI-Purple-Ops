@@ -56,18 +56,13 @@ docs-tables: ## Generate docs tables and update README
 docs-check: docs-tables ## Fail if generated docs drift
 	git diff --exit-code -- docs/generated README.md
 
-toolkit: ## Install and verify redteam tools
+toolkit: ## Install optional redteam dependencies
 	@echo "=== Installing Redteam Toolkit ==="
-	aipop tools install --stable || $(PY) -m cli.harness tools install --stable
+	$(PIP) install -e ".[adversarial]" || echo "Adversarial extras not available"
+	$(PIP) install -e ".[intelligence]" || echo "Intelligence extras not available"
 	@echo ""
-	@echo "=== Verifying Tool Installation ==="
-	aipop tools check || $(PY) -m cli.harness tools check
-	@echo ""
-	@echo "=== Running Tool Health Checks ==="
-	@$(PY) scripts/test_toolkit.py || echo "Toolkit test script not found - skipping"
+	@echo "Done. GCG/AutoDAN suites now available."
 
-toolkit.update: ## Update toolkit to latest versions
-	aipop tools update || $(PY) -m cli.harness tools update
-
-toolkit.check: ## Check toolkit installation status
-	aipop tools check || $(PY) -m cli.harness tools check
+toolkit.check: ## Verify optional deps are installed
+	@$(PY) -c "import torch; print(f'PyTorch {torch.__version__}')" 2>/dev/null || echo "PyTorch: not installed (needed for adversarial suites)"
+	@$(PY) -c "import transformers; print(f'Transformers {transformers.__version__}')" 2>/dev/null || echo "Transformers: not installed"

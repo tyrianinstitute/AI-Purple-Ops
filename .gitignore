@@ -71,6 +71,11 @@ data/fixtures/**
 !data/fixtures/README.md
 !data/fixtures/.gitkeep
 
+# Recordings (keep branding ones, ignore temp)
+*.gif
+# Allow cast files in branding/ (committed for README demo)
+# Ignore cast files everywhere else
+
 # Temporary files
 *.tmp
 *.bak
@@ -137,3 +142,12 @@ adapters/*.yml
 !adapters/templates/
 !adapters/templates/*.yaml
 .aipop/
+
+# Large generated assets (SVGs rendered from cast files)
+branding/hero-scan.svg
+*.svg
+!branding/logo-*.svg
+
+# Temp fuzz artifacts
+poison*.pdf
+aipop-fuzz-*.pdf

@@ -214,11 +214,27 @@ def _parse_test_case(case_data: Any, suite_id: str, case_num: int) -> TestCase: 
             f"Hint: Each test case should be a dict with 'id:', 'prompt:', etc."
         )
 
+    # Multi-step cases (indirect injection chains)
+    if case_data.get("type") == "multi_step":
+        test_id = case_data.get("id", f"{suite_id}_case_{case_num:03d}")
+        metadata = case_data.get("metadata", {})
+        metadata["multi_step"] = True
+        metadata["steps"] = case_data.get("steps", [])
+        metadata["vars"] = case_data.get("vars", {})
+        metadata["cleanup"] = case_data.get("cleanup", [])
+        metadata["expected"] = "fail"  # multi-step cases test for vulnerabilities
+        # Use a placeholder prompt — the chain runner handles execution
+        return TestCase(
+            id=test_id,
+            prompt="[multi-step chain — see steps]",
+            metadata=metadata,
+        )
+
     # Validate required fields -- either 'prompt' or 'turns' must be present
     if "prompt" not in case_data and "turns" not in case_data:
         raise YAMLSuiteError(
             "Missing required field 'prompt' or 'turns'\n"
-            "Hint: Each test case must have a 'prompt:' field or a 'turns:' list for multi-stage."
+            "Hint: Each test case must have a 'prompt:' field, a 'turns:' list, or 'type: multi_step' with 'steps:'."
         )
 
     # Extract fields

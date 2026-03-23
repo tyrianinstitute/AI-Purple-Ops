@@ -1,6 +1,9 @@
 # GCG Universal Adversarial Suffixes
-# Research-backed GCG-generated suffixes (99% ASR on undefended models)
-# Source: Zou et al. 2023 - "Universal Adversarial Triggers for Attacking and Analyzing NLP"
+# Source: Zou et al. 2023 - "Universal and Transferable Adversarial Attacks on Aligned Language Models"
+# Note: ASR numbers from 2023 research against pre-hardened models. Modern models (2025+)
+# are significantly more resistant. These test for REGRESSION, not guaranteed bypass.
+#
+# Requires: pip install ai-purple-ops[adversarial]  (PyTorch + Transformers)
 
 id: gcg_adversarial_suffixes_v1
 name: GCG Universal Adversarial Suffixes

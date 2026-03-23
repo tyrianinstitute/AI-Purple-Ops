@@ -17,4 +17,4 @@ Report security issues privately via GitHub Security Advisories.
 - **72 hours**: Detailed impact assessment
 - **Variable**: Fix timeline based on severity
 
-For usage guidelines regarding offensive tooling, see [USAGE_POLICY.md](docs/USAGE_POLICY.md).
+AIPOP is an offensive security testing tool. Use it only against systems you own or have explicit written authorization to test. Unauthorized use against third-party systems is illegal.
