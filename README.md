@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://asciinema.org/a/q4dOO0SU8Vf4ESlS"><img src="https://asciinema.org/a/q4dOO0SU8Vf4ESlS.png" width="800" alt="aipop demo — recon and fuzz"></a>
+  <a href="https://asciinema.org/a/q4dOO0SU8Vf4ESlS"><img src="https://asciinema.org/a/q4dOO0SU8Vf4ESlS.svg" width="800" alt="aipop demo — recon and fuzz"></a>
 </p>
 
 <p align="center">
