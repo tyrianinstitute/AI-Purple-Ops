@@ -2250,6 +2250,10 @@ def scan_cmd(
         "firm", "--confidence-threshold",
         help="Minimum confidence to report: certain, firm, tentative.",
     ),
+    auto: bool = typer.Option(
+        False, "--auto",
+        help="Use recon-driven attack planner to auto-select suites and fuzz config.",
+    ),
 ) -> None:
     """Scan a target — recon, test, report. One command, full picture.
 
@@ -2403,6 +2407,25 @@ def scan_cmd(
         else:
             if not is_json:
                 console.print(f"  [dim][[/][magenta]1/3[/][dim]][/] [bold]recon[/] [dim]— skipped[/]")
+
+        # --auto: use recon-driven attack planner to pick suites
+        attack_plan = None
+        if auto and recon_report and not suite:
+            from aipop.intelligence.attack_planner import plan_attack, format_plan
+
+            attack_plan = plan_attack(recon_report, rate_limit=rate_limit)
+
+            if not is_json:
+                console.print()
+                console.print(format_plan(attack_plan))
+                console.print()
+
+            # Override recommended_suites with planner output
+            recommended_suites = list(attack_plan.suites)
+            # Chain templates are loaded separately — add them too
+            for ct in attack_plan.chain_templates:
+                if ct not in recommended_suites:
+                    recommended_suites.append(ct)
 
         if suite:
             recommended_suites = [suite]
@@ -6179,6 +6202,65 @@ def export_cmd(
 
     else:
         print_error(f"Unknown export format: {format}. Available: ghostwriter, dradis, pdf")
+        raise typer.Exit(2)
+
+
+@app.command("report", rich_help_panel="Diagnostics")
+def report_cmd(
+    ctx: typer.Context,
+    format: str = typer.Option("html", "--format", "-f", help="Report format: html or md"),
+    input_path: Path = typer.Option(
+        Path("out/reports/summary.json"), "--input", "-i", help="Path to summary.json"
+    ),
+    transcripts: Path = typer.Option(
+        Path("out/transcripts"), "--transcripts", "-t", help="Transcripts directory"
+    ),
+    output: Path = typer.Option(
+        None, "--output", "-o", help="Output file path (default: auto-generated)"
+    ),
+    client: str = typer.Option("AI System Assessment", "--client", help="Client/company name"),
+    assessor: str = typer.Option("AI Purple Ops", "--assessor", help="Assessor name"),
+    engagement_id: str = typer.Option(None, "--engagement-id", help="Engagement reference number"),
+    scope: str = typer.Option(
+        "AI model endpoint security assessment", "--scope", help="Assessment scope description"
+    ),
+    date_range: str = typer.Option(None, "--date-range", help="Assessment period"),
+) -> None:
+    """Generate an executive-grade assessment report.
+
+    Reads scan results and produces a polished, CISO-ready report with
+    compliance evidence sections for NIST AI RMF, OWASP, and SOC 2.
+
+    Examples:
+        aipop report --format html --output report.html
+        aipop report --format html --client "Acme Corp" --assessor "Jane Doe"
+        aipop report --format md
+    """
+    if not input_path.exists():
+        print_error(f"Summary file not found: {input_path}")
+        raise typer.Exit(2)
+
+    if format == "html":
+        from aipop.reporters.executive_report import ExecutiveReport
+
+        out = output or Path("out/reports/executive_report.html")
+        config = {
+            "client_name": client,
+            "assessor_name": assessor,
+            "engagement_id": engagement_id,
+            "scope": scope,
+            "date_range": date_range,
+        }
+        report = ExecutiveReport()
+        result = report.generate(input_path, transcripts, out, config=config)
+        print_success(f"Executive HTML report generated: {result}")
+
+    elif format == "md":
+        print_warning("Markdown report format is not yet implemented. Use --format html.")
+        raise typer.Exit(2)
+
+    else:
+        print_error(f"Unknown report format: {format}. Available: html, md")
         raise typer.Exit(2)
 
 

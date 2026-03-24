@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "AttackPlan",
     "CapturedRequest",
     "DiscoveredEndpoint",
     "HTTPRecon",
@@ -11,10 +12,13 @@ __all__ = [
     "TrafficCapture",
     "build_entry",
     "build_har",
+    "format_plan",
+    "plan_attack",
     "save_har",
     "validate_har",
 ]
 
+from aipop.intelligence.attack_planner import AttackPlan, format_plan, plan_attack
 from aipop.intelligence.har_exporter import build_entry, build_har, save_har, validate_har
 from aipop.intelligence.http_recon import DiscoveredEndpoint, HTTPRecon, HTTPReconResult
 from aipop.intelligence.recon import ReconReport
