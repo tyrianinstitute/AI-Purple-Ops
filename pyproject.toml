@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-purple-ops"
-version = "0.6.5"
-description = "AI security testing tool — template-driven, multi-engine, evidence-grade"
+name = "aipop"
+version = "0.7.0"
+description = "One CLI for AI security testing. Recon, scan, fuzz, chain, gate."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
@@ -24,6 +24,18 @@ dependencies = [
     "websocket-client>=1.8.0,<2",
     "platformdirs>=4.0,<5",
     "jinja2>=3.1,<4",
+]
+keywords = ["ai", "security", "llm", "pentesting", "red-team", "prompt-injection", "rag", "fuzzing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
 ]
 
 [project.urls]
