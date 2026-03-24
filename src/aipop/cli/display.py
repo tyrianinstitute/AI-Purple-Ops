@@ -152,13 +152,26 @@ def finding_line(
     latency_ms: float = 0,
     is_static: bool = False,
     console: Console | None = None,
+    raw_ids: bool = False,
 ) -> None:
     """Print a single finding as one compact line — Nuclei-style.
 
     Static mode uses a dim SIM badge so findings can't be mistaken for real.
     Live mode uses severity-colored badges (CRIT, HIGH, MED, LOW).
+    Uses human-readable titles from the finding taxonomy when available.
     """
     console = console or Console(stderr=True)
+
+    # Resolve human-readable title from taxonomy
+    display_name = test_id
+    if not raw_ids:
+        try:
+            from aipop.data import get_finding_title
+            title = get_finding_title(test_id)
+            if title != test_id:
+                display_name = title
+        except ImportError:
+            pass
 
     sev = severity.upper()
     ts = datetime.now(UTC).strftime("%H:%M:%S")
@@ -167,13 +180,13 @@ def finding_line(
     if is_static:
         badge = "[dim] SIM  [/]"
         console.print(
-            f"  [dim]{ts}[/] {badge} [dim]{test_id} | {category} | {description}[/]",
+            f"  [dim]{ts}[/] {badge} [dim]{display_name} | {category} | {description}[/]",
             highlight=False,
         )
     else:
         badge = SEVERITY_BADGE.get(sev, SEVERITY_BADGE["UNKNOWN"])
         console.print(
-            f"  [dim]{ts}[/] {badge} [bold]{test_id}[/] [dim]|[/] {category} [dim]|[/] {description}{latency_str}",
+            f"  [dim]{ts}[/] {badge} [bold]{display_name}[/] [dim]|[/] {category}{latency_str}",
             highlight=False,
         )
 

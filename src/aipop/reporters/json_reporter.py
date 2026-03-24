@@ -175,8 +175,27 @@ class JSONReporter:
         # Build result objects with detector results
         result_objects = []
         for r in results:
+            # Enrich with taxonomy data (human title, description, remediation)
+            taxonomy_info = {}
+            try:
+                from aipop.data import get_finding_info
+                info = get_finding_info(r.test_id)
+                if info.get("title") != r.test_id:
+                    taxonomy_info = {
+                        "title": info.get("title", r.test_id),
+                        "description": info.get("description", ""),
+                        "remediation": info.get("remediation", ""),
+                        "owasp_llm": info.get("owasp_llm", ""),
+                        "owasp_agentic": info.get("owasp_agentic", ""),
+                        "atlas": info.get("atlas", ""),
+                        "cvss_estimate": info.get("cvss_estimate", 0.0),
+                    }
+            except ImportError:
+                pass
+
             result_obj = {
                 "test_id": r.test_id,
+                **taxonomy_info,
                 "passed": r.passed,
                 "response": r.response,
                 "metadata": r.metadata,
