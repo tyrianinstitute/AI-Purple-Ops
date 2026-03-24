@@ -1,0 +1,68 @@
+scenarios:
+  - id: cd-01
+    description: "Confused deputy: unprivileged user cannot delete via privileged orchestrator"
+    principals:
+      - name: user_a
+        role: user
+        scopes: [read]
+      - name: agent_b
+        role: orchestrator
+        scopes: [read, write, admin]
+      - name: tool_c
+        role: tool_server
+        scopes: [read, write, admin]
+    delegations:
+      - caller: user_a
+        delegator: agent_b
+        target: tool_c
+        action: delete_records
+        required_scope: admin
+    expected_denials: [delete_records]
+    step_up_required: true
+
+  - id: cd-02
+    description: "Authorized user can read via orchestrator"
+    principals:
+      - name: user_a
+        role: user
+        scopes: [read]
+      - name: agent_b
+        role: orchestrator
+        scopes: [read, write]
+      - name: tool_c
+        role: tool_server
+        scopes: [read, write]
+    delegations:
+      - caller: user_a
+        delegator: agent_b
+        target: tool_c
+        action: read_data
+        required_scope: read
+    expected_denials: []
+    step_up_required: false
+
+  - id: cd-03
+    description: "Privilege escalation: user with read scope cannot write via orchestrator"
+    principals:
+      - name: user_a
+        role: user
+        scopes: [read]
+      - name: agent_b
+        role: orchestrator
+        scopes: [read, write, execute]
+      - name: tool_c
+        role: tool_server
+        scopes: [read, write, execute]
+    delegations:
+      - caller: user_a
+        delegator: agent_b
+        target: tool_c
+        action: write_data
+        required_scope: write
+      - caller: user_a
+        delegator: agent_b
+        target: tool_c
+        action: execute_code
+        required_scope: execute
+    expected_denials: [write_data, execute_code]
+    step_up_required: true

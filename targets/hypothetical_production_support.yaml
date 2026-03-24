@@ -1,0 +1,80 @@
+apiVersion: aipop/v1
+kind: TargetProfile
+
+metadata:
+  name: hypothetical-production-support
+  description: Hypothetical production support assistant behind a custom HTTPS gateway
+  tags:
+    - production
+    - customer-support
+    - rag
+    - cloud
+
+spec:
+  connection:
+    baseUrl: https://api.acme-support.example
+    endpointPath: /v1/assistant/chat
+    timeoutSeconds: 45
+    headers:
+      x-environment: production
+      x-tenant: acme-support
+    tls:
+      mode: mtls
+      caBundlePath: /etc/ssl/acme-support-ca.pem
+      clientCertPath: /etc/ssl/aipop-client.crt
+      clientKeyPath: /etc/ssl/aipop-client.key
+      rejectUnauthorized: true
+
+  auth:
+    mode: oauth2_client_credentials
+    oauth2ClientCredentials:
+      tokenUrl: https://login.acme-support.example/oauth2/token
+      clientIdFrom:
+        envVar: AIPO_ACME_CLIENT_ID
+      clientSecretFrom:
+        envVar: AIPO_ACME_CLIENT_SECRET
+      scopes:
+        - assistant.chat.read
+        - assistant.chat.write
+
+  model:
+    provider: custom_http
+    name: acme-support-prod
+    request:
+      temperature: 0.2
+      maxTokens: 512
+      seed: 42
+
+  rateLimits:
+    concurrency:
+      mode: adaptive
+      fixedMax: 3
+    retries:
+      maxAttempts: 5
+      honorRetryAfter: true
+      retryOnStatus:
+        - 429
+        - 502
+        - 503
+        - 504
+
+  sessions:
+    serverSide:
+      enabled: true
+      extract:
+        parser: "$.session.id"
+    clientSide:
+      enabled: true
+      idStrategy: uuid
+      headerName: x-session-id
+
+  scope:
+    notes: "Authorized purple-team assessment of the production support assistant with emphasis on RAG poisoning, prompt injection, and tool misuse."
+    inScope:
+      - api.acme-support.example
+      - /v1/assistant/chat
+      - retrieval pipeline metadata returned by the assistant
+    outOfScope:
+      - Admin control plane
+      - Billing APIs
+      - Employee-only support queues

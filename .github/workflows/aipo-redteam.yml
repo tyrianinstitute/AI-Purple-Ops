@@ -1,0 +1,45 @@
+name: AI Purple Ops Redteam
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  redteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run redteam tests
+        run: aipop run --suite adversarial --adapter mock --response-mode smart
+
+      - name: Quality gate check
+        run: aipop gate --generate-evidence
+
+      - name: Upload evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redteam-evidence
+          path: out/evidence/*.zip
+          if-no-files-found: warn
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            out/reports/summary.json
+            out/reports/junit.xml
+          if-no-files-found: warn

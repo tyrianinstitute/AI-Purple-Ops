@@ -1,0 +1,49 @@
+# PAIR Configuration
+# Prompt Automatic Iterative Refinement
+#
+# Based on Chao et al. 2023 "Jailbreaking Black Box Large Language Models in Twenty Queries"
+#
+# Defaults match paper specifications:
+# - 30 streams with 3 iterations: Paper shows this achieves 88% ASR on Vicuna
+#   with only ~90 queries (vs 25k for AutoDAN)
+# - Attacker model GPT-4: Strong reasoning required for iterative refinement
+# - Strategies: Rotated across streams for diversity
+
+pair:
+  # Core parameters (paper defaults)
+  num_streams: 30
+  iterations_per_stream: 3
+  
+  # Attacker LLM
+  attacker_model: "gpt-4"  # Strong reasoning required
+  attacker_temperature: 1.0
+  attacker_max_tokens: 500
+  
+  # Strategies (rotated across streams)
+  strategies:
+    - logical_appeal
+    - authority_endorsement
+    - role_play
+  
+  # Stopping conditions
+  stop_on_success: true
+  detect_stagnation: true
+  restart_on_stagnation: true
+  
+  # Cost controls
+  max_queries: 90  # 30 streams * 3 iterations
+  enable_early_stopping: true
+  
+  # Justification:
+  # 30 streams with 3 iterations: Paper shows this achieves 88% ASR on Vicuna
+  #   with only ~90 queries (vs 25k for AutoDAN). The "many shallow streams"
+  #   approach explores diverse attack strategies efficiently.
+  #
+  # Attacker model GPT-4: Paper uses Mixtral 8×7B but notes that strong
+  #   open-source models perform comparably. GPT-4 provides better reasoning
+  #   for iterative refinement, reducing total queries needed.
+  #
+  # Strategies: Logical appeal, authority endorsement, and role-play represent
+  #   three distinct attack vectors. Rotating across streams ensures diverse
+  #   exploration without requiring manual strategy selection.
+

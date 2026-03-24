@@ -1,0 +1,13 @@
+# Tool allowlist for ASI04 supply chain integrity gate
+# Tools not in this list will be blocked when fail_on_unknown is true
+
+allowed_tools:
+  - promptfoo
+  - garak
+  - pyrit
+  - mcpsecbench
+
+allowed_servers:
+  # MCP servers that are trusted
+  # Add your organization's approved MCP servers here
+  # Format: namespace/server-name or just server-name

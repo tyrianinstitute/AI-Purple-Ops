@@ -1,0 +1,10 @@
+baseline:
+  moderate_controls_count: 325
+  low_20x_controls_count: 51
+evidence:
+  monthly_conmon: ["out/reports/"]
+  pentest_report: "out/evidence/"
+controls_map:
+  AC: { tests: ["access_control"], evidence: ["out/reports/"] }
+  AU: { tests: ["audit_logging"], evidence: ["out/reports/"] }
+  SI: { tests: ["malicious_input"], evidence: ["out/reports/"] }

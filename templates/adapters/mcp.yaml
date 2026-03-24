@@ -1,0 +1,160 @@
+# MCP (Model Context Protocol) Adapter Configuration
+#
+# This template helps you connect to MCP servers for security testing.
+# See docs/MCP_ADAPTER.md for full documentation.
+
+# Adapter identification
+name: "my-mcp-server"
+description: "MCP server for testing"
+
+# Transport configuration
+transport:
+  # Transport type: http, stdio, or websocket
+  type: http
+  
+  # For HTTP/WebSocket transports:
+  url: "https://api.example.com/mcp"
+  
+  # For stdio transport (local server):
+  # command: ["python", "server.py"]
+  # cwd: "/path/to/server"
+  
+  # Timeouts (seconds)
+  timeout:
+    connection: 30  # Time to establish connection
+    read: 120       # Time to receive response
+    write: 10       # Time to send request
+    idle: 300       # SSE stream inactivity timeout
+  
+  # Proxy configuration (optional)
+  # proxy: "http://proxy.example.com:8080"
+  
+  # TLS settings
+  verify_tls: true  # Set to false only for testing with self-signed certs
+  
+  # Retry configuration
+  max_retries: 3
+
+# Authentication configuration
+auth:
+  # Auth type: bearer, api_key, or none
+  type: bearer
+  
+  # SECURITY BEST PRACTICE: Use environment variable for tokens
+  # Set this env var before running: export MCP_AUTH_TOKEN="your-token-here"
+  token_env_var: "MCP_AUTH_TOKEN"
+  
+  # WARNING: Do NOT hardcode tokens in this file!
+  # Hardcoded tokens will be detected and warnings will be shown.
+  # If you must use a hardcoded token (NOT RECOMMENDED):
+  # token_value: "sk-..."  # INSECURE! Use token_env_var instead
+  
+  # For api_key auth type, specify the header name:
+  header_name: "Authorization"  # Default for bearer
+  # header_name: "X-API-Key"  # Example for API key auth
+
+# Operation mode
+# - target: MCP server is the attack target (enumerate/exploit)
+# - tool_provider: MCP tools available to attacker LLM
+# - dual: Both modes active
+mode: target
+
+# Discovery mode (for aipop adapter mcp discover)
+# - manual: Use exact URL/command as specified above
+# - smart: Auto-detect endpoint from base URL
+# - full: Aggressive scan with WAF detection
+discovery:
+  mode: manual
+  fingerprint: false
+
+# Safety configuration
+safety:
+  # Dry run mode: enumerate but don't execute tools
+  dry_run: false
+  
+  # Tool whitelist (empty = allow all)
+  tool_whitelist: []
+  # tool_whitelist: ["mcp_search", "read_file"]
+  
+  # Tool blacklist (prevent dangerous operations)
+  tool_blacklist: []
+  # tool_blacklist: ["delete_*", "drop_*", "shutdown"]
+  
+  # Require confirmation before executing tools
+  require_confirmation: false
+
+# Caching configuration
+cache:
+  enabled: true
+  ttl_seconds: 300  # 5 minutes
+  
+  # Cache enumeration results (tools/list, resources/list)
+  cache_enumeration: true
+  
+  # Cache tool call results (only for idempotent tools)
+  cache_tool_results: false
+
+# Rate limiting
+rate_limit:
+  # Maximum concurrent requests
+  max_concurrent: 5
+  
+  # Respect X-RateLimit-* headers from server
+  respect_headers: true
+  
+  # Custom rate limit (requests per minute)
+  # Leave unset to use server's limits
+  # rpm_limit: 60
+
+# Logging and debugging
+logging:
+  # Enable verbose MCP protocol logging
+  verbose: false
+  
+  # Log level for MCP adapter (debug, info, warning, error)
+  level: info
+  
+  # Save failed requests for replay
+  save_failed_requests: true
+  
+  # Server log level (what to request from MCP server)
+  server_log_level: warning
+
+# Additional metadata (for documentation/organization)
+metadata:
+  tags: ["ctf", "pentest", "mcp"]
+  notes: "Add any notes about this MCP server here"
+  created_at: "2025-11-15"
+  
+# ============================================================================
+# SECURITY CHECKLIST:
+# ============================================================================
+# 
+# ✅ Token stored in environment variable, NOT in this file
+# ✅ TLS verification enabled (verify_tls: true)
+# ✅ Appropriate tool blacklist configured if needed
+# ✅ Rate limiting enabled to avoid DoS
+# ✅ This file added to .gitignore (adapters/*.yaml)
+# 
+# ============================================================================
+# QUICK START:
+# ============================================================================
+#
+# 1. Copy this template:
+#    cp templates/adapters/mcp.yaml adapters/my_server.yaml
+#
+# 2. Edit configuration (URL, auth, etc.)
+#
+# 3. Set auth token:
+#    export MCP_AUTH_TOKEN="your-token-here"
+#
+# 4. Test connection:
+#    aipop adapter mcp test adapters/my_server.yaml
+#
+# 5. Enumerate capabilities:
+#    aipop adapter mcp enumerate adapters/my_server.yaml --show-tools
+#
+# 6. Use in attack:
+#    aipop run --adapter mcp:adapters/my_server.yaml --attack gcg
+#
+# ============================================================================

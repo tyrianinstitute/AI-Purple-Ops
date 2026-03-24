@@ -1,0 +1,188 @@
+# AI Purple Ops Tool Registry
+# Categories: llm_security, adversarial_ml, fuzzing, evaluation, safety,
+#             rag_security, compliance, privacy
+
+tools:
+  # === LLM Security & Red Teaming ===
+  - id: garak
+    category: llm_security
+    repo: https://github.com/leondz/garak
+    description: LLM vulnerability scanner with 100+ probes
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: pyrit
+    category: llm_security
+    repo: https://github.com/Azure/PyRIT
+    description: Microsoft's Python Risk Identification Toolkit for LLMs
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: promptfoo
+    category: llm_security
+    repo: https://github.com/promptfoo/promptfoo
+    description: LLM testing framework with security assertions
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: llm-guard
+    category: llm_security
+    repo: https://github.com/protectai/llm-guard
+    description: Comprehensive security toolkit for LLM interactions
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: rebuff
+    category: llm_security
+    repo: https://github.com/protectai/rebuff
+    description: Prompt injection detection framework
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Adversarial ML ===
+  - id: art
+    category: adversarial_ml
+    repo: https://github.com/Trusted-AI/adversarial-robustness-toolbox
+    description: IBM's adversarial robustness toolbox
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: cleverhans
+    category: adversarial_ml
+    repo: https://github.com/cleverhans-lab/cleverhans
+    description: Adversarial examples library from Ian Goodfellow et al
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: foolbox
+    category: adversarial_ml
+    repo: https://github.com/bethgelab/foolbox
+    description: Python toolbox for adversarial attacks
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: textattack
+    category: adversarial_ml
+    repo: https://github.com/QData/TextAttack
+    description: Framework for adversarial attacks on NLP models
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Fuzzing & Property Testing ===
+  - id: hypothesis
+    category: fuzzing
+    repo: https://github.com/HypothesisWorks/hypothesis
+    description: Property-based testing for Python
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Evaluation & Benchmarking ===
+  - id: lm-evaluation-harness
+    category: evaluation
+    repo: https://github.com/EleutherAI/lm-evaluation-harness
+    description: EleutherAI's LLM evaluation framework
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: helm
+    category: evaluation
+    repo: https://github.com/stanford-crfm/helm
+    description: Stanford's Holistic Evaluation of Language Models
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Safety & Content Moderation ===
+  - id: detoxify
+    category: safety
+    repo: https://github.com/unitaryai/detoxify
+    description: Toxic comment classification
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: nemo-guardrails
+    category: safety
+    repo: https://github.com/NVIDIA/NeMo-Guardrails
+    description: NVIDIA's programmable guardrails for LLMs
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: langkit
+    category: safety
+    repo: https://github.com/whylabs/langkit
+    description: LLM monitoring and guardrails toolkit
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: guardrails
+    category: safety
+    repo: https://github.com/guardrails-ai/guardrails
+    description: Guardrails AI framework for LLM validation
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === RAG Security ===
+  - id: ragchecker
+    category: rag_security
+    repo: https://github.com/amazon-science/rag-checker
+    description: Amazon's RAG faithfulness and relevancy checker
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Compliance & Governance ===
+  - id: ai-fairness-360
+    category: compliance
+    repo: https://github.com/Trusted-AI/AIF360
+    description: IBM's AI fairness toolkit
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: fairlearn
+    category: compliance
+    repo: https://github.com/fairlearn/fairlearn
+    description: Microsoft's fairness assessment toolkit
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: mlte
+    category: compliance
+    repo: https://github.com/mlte-team/mlte
+    description: Machine Learning Test & Evaluation framework
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  # === Privacy & PII Detection ===
+  - id: presidio
+    category: privacy
+    repo: https://github.com/microsoft/presidio
+    description: Microsoft's PII detection and anonymization
+    status: active
+    last_checked: 2025-10-20
+    replacements: []
+
+  - id: scrubadub
+    category: privacy
+    repo: https://github.com/LeapBeyond/scrubadub
+    description: Remove PII from dirty text
+    status: active
+    last_checked: 2025-10-20
+    replacements: []

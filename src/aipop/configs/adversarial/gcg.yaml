@@ -1,0 +1,78 @@
+# GCG (Greedy Coordinate Gradient) Configuration
+# Based on "Universal and Transferable Adversarial Attacks on Aligned Language Models"
+# Research: https://arxiv.org/abs/2307.15043
+
+# White-box GCG parameters (requires model access + GPU)
+white_box:
+  # Gradient-guided token search
+  top_k: 256               # Top-k candidates per position (paper default: 256)
+  batch_size: 512          # Candidate batch size (paper default: 512)
+  num_steps: 500           # Optimization iterations (paper default: 500)
+  
+  # Suffix configuration
+  suffix_length: 20        # Length in tokens (paper default: 20)
+  init_suffix: null        # Optional starting suffix (null = random init)
+  
+  # Device configuration
+  device: "auto"           # "auto", "cuda", "mps", or "cpu"
+  fallback_to_cpu: true    # Fallback to CPU if GPU unavailable
+  
+  # Performance tuning
+  enable_amp: true         # Automatic mixed precision (faster on modern GPUs)
+  gradient_clip: 1.0       # Gradient clipping value
+
+# Black-box GCG parameters (no model access needed)
+black_box:
+  # Uses pre-computed universal suffixes from library
+  use_library: true        # Load suffixes from data/adversarial_suffixes.json
+  min_asr: 0.6             # Minimum ASR threshold for library suffixes
+  
+  # Evolutionary search (if generate_on_demand=true)
+  population_size: 20      # Population for genetic algorithm
+  max_generations: 10      # Maximum generations
+  mutation_rate: 0.2       # Mutation probability
+
+# Model-specific optimization (fine-tuning)
+model_specific:
+  enabled: false           # Set --optimize-for-model to enable
+  num_iterations: 100      # Hill climbing iterations
+  early_stopping_patience: 10  # Stop if no improvement for N iterations
+  
+  # Typical ASR improvement: +2-5% when universal ASR is high (95%+)
+  # Larger gains (+20-70%) when universal ASR is low (<50%)
+
+# Universal vs Model-Specific Trade-offs
+# ==========================================
+# Universal suffixes:
+#   - Work across multiple models (high transferability)
+#   - Faster to generate (or use pre-computed library)
+#   - Lower maintenance (robust to model updates)
+#   - 95%+ ASR on many models
+#
+# Model-specific suffixes:
+#   - Optimized for specific model (2-5% ASR improvement)
+#   - Requires API access for optimization (~100 queries)
+#   - May degrade faster when model is updated
+#   - Best when universal ASR < 50%
+
+# Recommended configurations by use case
+# ==========================================
+# Quick testing (use library):
+#   black_box.use_library: true
+#   num_steps: 0
+#
+# Research/academic (true GCG):
+#   white_box.num_steps: 500
+#   white_box.batch_size: 512
+#   device: "cuda"
+#
+# Bug bounty (maximum ASR):
+#   white_box.num_steps: 1000
+#   model_specific.enabled: true
+#   device: "cuda"
+#
+# CI/CD testing (fast):
+#   black_box.use_library: true
+#   white_box.num_steps: 50  # Quick gradient search
+#   device: "cpu"
+

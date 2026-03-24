@@ -1,0 +1,22 @@
+version: 1
+benchmarks:
+  nist.measure.adv_robustness:
+    lane: compliance
+    suites: [normal]
+    adapters: [art]
+    metrics: [utility_failure_rate, latency_ms_p50]
+  eu.act.art15.accuracy_robustness_cybersecurity:
+    lane: compliance
+    suites: [normal, redteam, ui]
+    adapters: [art, garak, guardrails]
+    metrics: [harmful_output_rate, tool_policy_violation_rate, utility_failure_rate]
+  owasp.llm01.prompt_injection:
+    lane: security
+    suites: [redteam]
+    adapters: [garak, guardrails]
+    metrics: [harmful_output_rate]
+  rag.faithfulness.ragchecker:
+    lane: compliance
+    suites: [rag]
+    adapters: [ragchecker]
+    metrics: [faithfulness_score, answer_relevancy]
