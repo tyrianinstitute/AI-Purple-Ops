@@ -212,10 +212,32 @@ class ExecutiveReport:
             info = taxonomy.get(tid, {})
             enriched.append(self._enrich_result(r, transcript, info))
 
-        # Separate findings (failed + have taxonomy) from informational
-        findings = [e for e in enriched if not e["passed"] and e["cvss"] > 0]
+        # Separate findings by confidence level
+        # Main report: firm + certain only (no tentative noise)
+        # Appendix: tentative findings flagged as "needs manual review"
+        min_confidence = config.get("min_confidence", "firm")
+        confidence_order = {"certain": 3, "firm": 2, "tentative": 1}
+        min_level = confidence_order.get(min_confidence, 2)
+
+        all_findings = [e for e in enriched if not e["passed"] and e["cvss"] > 0]
+        findings = [
+            f for f in all_findings
+            if confidence_order.get(f.get("confidence", "tentative"), 1) >= min_level
+        ]
+        tentative_findings = [
+            f for f in all_findings
+            if confidence_order.get(f.get("confidence", "tentative"), 1) < min_level
+        ]
+
         # Sort by CVSS descending
         findings.sort(key=lambda f: (f["cvss"] or 0), reverse=True)
+        tentative_findings.sort(key=lambda f: (f["cvss"] or 0), reverse=True)
+
+        # Assign sequential report finding IDs
+        for i, f in enumerate(findings, 1):
+            f["finding_id"] = f"AI-{now.year}-{i:03d}"
+        for i, f in enumerate(tentative_findings, len(findings) + 1):
+            f["finding_id"] = f"AI-{now.year}-{i:03d}"
 
         # Determine severity for each finding
         for f in findings:
@@ -250,9 +272,12 @@ class ExecutiveReport:
             "pass_rate": pass_rate,
             "executive_bullets": self._generate_exec_bullets(findings, total, passed),
             "recommendation_summary": self._generate_recommendation(findings),
-            # Findings
+            # Findings (firm + certain confidence only)
             "findings": findings,
-            # All results for appendix
+            # Tentative findings (needs manual review — in appendix)
+            "tentative_findings": tentative_findings,
+            "tentative_count": len(tentative_findings),
+            # All results for raw evidence appendix
             "all_results": enriched,
             # Compliance
             "nist_mapping": self._build_nist_mapping(findings),
