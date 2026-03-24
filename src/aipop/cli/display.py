@@ -61,9 +61,30 @@ def recon_panel(
     recommended_suites: list[str],
     details: dict[str, str] | None = None,
     console: Console | None = None,
+    recon_report: "ReconReport | None" = None,
 ) -> None:
-    """Display recon/discovery results — compact, capability grid."""
+    """Display recon/discovery results — compact, capability grid.
+
+    If a ReconReport is provided, renders the full HTTP + behavioral
+    panel. Otherwise falls back to the legacy capability grid.
+    """
     console = console or Console(stderr=True)
+
+    # ── New-style panel from ReconReport ────────────────────────
+    if recon_report is not None:
+        content = recon_report.to_rich_panel()
+        console.print(
+            Panel(
+                content,
+                title="[bold cyan]recon[/]",
+                border_style="cyan",
+                padding=(0, 1),
+            )
+        )
+        console.print()
+        return
+
+    # ── Legacy panel (backward compat) ──────────────────────────
     details = details or {}
 
     # Capabilities as a clean grid

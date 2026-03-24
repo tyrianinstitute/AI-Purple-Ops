@@ -2106,35 +2106,23 @@ def recon_cmd(
             out = ctx.obj.get("_real_stdout") or sys.__stdout__
             out.write(json.dumps(result.to_dict(), indent=2) + "\n")
         else:
-            # Framework
-            fw_style = "green" if result.framework != "unknown" else "dim"
-            lines = [
-                f"[bold]target:[/]     {result.target}",
-                f"[bold]framework:[/]  [{fw_style}]{result.framework}[/] ({result.framework_confidence})",
-            ]
-
-            # Guardrail
-            gr_style = "green" if result.guardrail_type != "unknown" else "dim"
-            lines.append(
-                f"[bold]guardrail:[/]  [{gr_style}]{result.guardrail_type}[/] ({result.guardrail_confidence})"
-            )
-
-            # Capabilities
-            cap_parts = []
-            for cap, detected in result.capabilities.items():
-                icon = "[green]●[/]" if detected else "[dim]○[/]"
-                cap_parts.append(f"{icon} {cap.replace('_', ' ')}")
-            if cap_parts:
-                lines.append(f"[bold]surface:[/]    {'  '.join(cap_parts)}")
-
-            # Model hints
-            if result.model_hints:
-                lines.append(f"[bold]model:[/]      {'; '.join(result.model_hints)}")
-
+            # Use the new rich panel from ReconReport
             console.print(
-                Panel("\n".join(lines), title="[bold cyan]recon results[/]",
-                      border_style="cyan", padding=(0, 1))
+                Panel(
+                    result.to_rich_panel(),
+                    title="[bold cyan]recon[/]",
+                    border_style="cyan",
+                    padding=(0, 1),
+                )
             )
+
+            # Guardrail info
+            if result.guardrail_type != "unknown":
+                gr_style = "green"
+                console.print(
+                    f"\n  [bold]guardrail:[/] [{gr_style}]{result.guardrail_type}[/] "
+                    f"({result.guardrail_confidence})"
+                )
 
             # Recommended approach
             if result.recommended_approach:
@@ -2351,31 +2339,41 @@ def scan_cmd(
             else:
                 adapter.custom_headers = _parsed_headers
 
-        # Phase 1: Recon
+        # Phase 1: Recon (HTTP fingerprinting + behavioral probes)
         discovery_result = None
+        recon_report = None
         recommended_suites = ["adversarial"]
 
         if not skip_recon:
             if not is_json:
                 console.print(f"  [dim][[/][magenta]1/3[/][dim]][/] [bold]recon[/] [dim]— probing target capabilities...[/]")
             try:
-                from aipop.intelligence.discovery import TargetDiscovery
+                from aipop.intelligence.recon import full_recon
 
-                discovery = TargetDiscovery()
-                discovery_result = discovery.discover(adapter, verbose=False)
-                recommended_suites = discovery_result.recommended_suites
+                recon_report = full_recon(adapter)
+
+                # Build recommended suites from recon report capabilities
+                from aipop.intelligence.discovery import TargetDiscovery
+                cap_to_suites = TargetDiscovery.CAPABILITY_TO_SUITES
+                _recommended = set()
+                for cap, detected in recon_report.capabilities.items():
+                    if detected and cap in cap_to_suites:
+                        _recommended.update(cap_to_suites[cap])
+                _recommended.add("adversarial")
+                _recommended.add("normal")
+                recommended_suites = sorted(_recommended)
 
                 if not is_json:
                     target_display = (
                         "static (pipeline validation)" if is_static
-                        else target or discovery_result.target
+                        else target or recon_report.target_url
                     )
                     recon_panel(
                         target=target_display,
-                        capabilities=discovery_result.capabilities,
+                        capabilities=recon_report.capabilities,
                         recommended_suites=recommended_suites,
-                        details=discovery_result.details,
                         console=console,
+                        recon_report=recon_report,
                     )
             except Exception as e:
                 if not is_json:
