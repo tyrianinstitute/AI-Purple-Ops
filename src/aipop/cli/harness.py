@@ -6205,7 +6205,7 @@ def export_cmd(
         raise typer.Exit(2)
 
 
-@app.command("report", rich_help_panel="Diagnostics")
+@app.command("report", rich_help_panel="Primary")
 def report_cmd(
     ctx: typer.Context,
     format: str = typer.Option("html", "--format", "-f", help="Report format: html or md"),
