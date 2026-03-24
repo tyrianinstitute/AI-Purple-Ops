@@ -2287,6 +2287,14 @@ def scan_cmd(
     try:
         cfg = load_config()
 
+        # Reject empty/whitespace target early — don't silently fall back to mock
+        if target is not None and not target.strip():
+            print_error("Target URL is empty. Provide a valid URL or omit to use mock adapter.")
+            raise typer.Exit(code=2)
+
+        # Parse headers early so they're available for probe requests
+        _parsed_headers = _parse_header_flags(header) if header else {}
+
         # Create adapter — three paths:
         # 1. --target URL → auto-probe, zero config
         # 2. --adapter name → built-in or YAML adapter
@@ -2303,6 +2311,7 @@ def scan_cmd(
                         target_url=target,
                         prompt_field=prompt_field,
                         response_field=response_field,
+                        headers=_parsed_headers or None,
                     )
                     if not is_json:
                         print_info(f"Target locked: prompt={adapter.prompt_field}, response={adapter.response_text_field}")
@@ -2472,7 +2481,7 @@ def scan_cmd(
         # Phase 3: Scan
         _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True, quiet=True)
 
-        # Add cascade detector (always on for scan mode)
+        # Cascade detector replaces keyword-matching detectors (scan always uses cascade)
         from aipop.detectors.cascade import CascadeConfig, CascadeDetector
 
         _allowed_tools = None
@@ -2485,7 +2494,8 @@ def scan_cmd(
             confidence_threshold=confidence_threshold,
             allowed_tools=_allowed_tools,
         )
-        detectors.append(CascadeDetector(_cascade_config))
+        # Cascade includes refusal detection internally — replace keyword detectors
+        detectors = [CascadeDetector(_cascade_config)]
 
         scanner = Scanner(adapter=adapter, detectors=detectors)
         scan_options = ScanOptions(
@@ -2803,6 +2813,21 @@ def fuzz_cmd(
         9999, "--callback-port",
         help="Port for local callback server (default: 9999)",
     ),
+    morph: str = typer.Option(
+        None, "--morph",
+        help="Morph strategies to apply before PDF crafting. "
+             "'all' for every registered strategy, or comma-separated: "
+             "homoglyph,emoji_substitution,bidi_override,base64,rot13. "
+             "When set, uses FuzzCampaign with morph iteration.",
+    ),
+    rate_limit_fuzz: float = typer.Option(
+        2.0, "--rate-limit",
+        help="Max requests per second for fuzz campaign (default: 2)",
+    ),
+    export_suite: str = typer.Option(
+        None, "--export-suite",
+        help="Export vulnerable combos as YAML regression suite to this path.",
+    ),
 ) -> None:
     """Fuzz a RAG target with poisoned documents. Burp Intruder for AI.
 
@@ -2828,13 +2853,27 @@ def fuzz_cmd(
 
         aipop fuzz http://target:8000 \\
           --payloads pyrit:jailbreak_prompts --trigger "Help me"
+
+    Morph iteration (Burp Intruder style):
+
+        aipop fuzz http://target:8000 \\
+          --payloads builtin:canary --trigger "How do I escalate?" \\
+          --morph homoglyph,emoji_substitution,bidi_override \\
+          --mode cluster_bomb --leak-markers preset:all
+
+    All morph strategies × all payloads:
+
+        aipop fuzz http://target:8000 \\
+          --payloads builtin:canary --morph all \\
+          --trigger "Help me" --mode cluster_bomb \\
+          --export-suite regression.yaml
     """
     import re
     from rich.console import Console
     from rich.table import Table
     from rich.panel import Panel
 
-    from aipop.fuzz.engine import run_fuzz, load_payloads as _load_payloads, ALL_STRATEGIES
+    from aipop.fuzz.engine import run_fuzz, load_payloads as _load_payloads, ALL_STRATEGIES, FuzzCampaign, export_regression_suite
 
     console = Console(stderr=True)
 
@@ -2900,18 +2939,52 @@ def fuzz_cmd(
         cb_server = CallbackServer(port=callback_port)
         cb_url = cb_server.start()
 
+    # --- Resolve morph strategies ---
+    morph_list: list[str] | None = None
+    if morph:
+        if morph == "all":
+            from aipop.core.morph import MorphEngine
+            _engine = MorphEngine()
+            morph_list = [s.name for s in _engine.list_strategies()]
+        else:
+            morph_list = [m.strip() for m in morph.split(",")]
+
     # --- Print campaign header ---
     console.print()
-    total_combos = len(payload_list) * len(strategy_list) if mode == "cluster_bomb" else max(len(payload_list), len(strategy_list))
+    if morph_list:
+        # Morph campaign: attempts = payloads x morph_strategies (for cluster_bomb)
+        if mode == "cluster_bomb":
+            total_combos = len(payload_list) * len(morph_list)
+        elif mode == "sniper":
+            total_combos = len(morph_list)
+        elif mode == "battering_ram":
+            total_combos = len(payload_list)
+        else:
+            total_combos = len(payload_list) * len(morph_list)
+    else:
+        total_combos = len(payload_list) * len(strategy_list) if mode == "cluster_bomb" else max(len(payload_list), len(strategy_list))
     if max_attempts:
         total_combos = min(total_combos, max_attempts)
-    console.print(Panel(
+
+    header_lines = (
         f"[bold]target:[/bold]     {target}\n"
         f"[bold]payloads:[/bold]   {len(payload_list)} ({'builtin' if payloads and payloads.startswith('builtin') else 'custom'})\n"
         f"[bold]strategies:[/bold] {', '.join(strategy_list)}\n"
+    )
+    if morph_list:
+        header_lines += f"[bold]morph:[/bold]      {len(morph_list)} strategies\n"
+    header_lines += (
         f"[bold]mode:[/bold]       {mode}\n"
         f"[bold]attempts:[/bold]   {total_combos}\n"
-        f"[bold]callback:[/bold]   {cb_url or 'none'}",
+        f"[bold]callback:[/bold]   {cb_url or 'none'}"
+    )
+    if morph_list:
+        header_lines += (
+            "\n[bold yellow]WARNING:[/bold yellow] KB pollution accumulates — "
+            "each attempt adds a poisoned document."
+        )
+    console.print(Panel(
+        header_lines,
         title="[bold cyan]aipop fuzz[/bold cyan]",
         border_style="cyan",
     ))
@@ -2921,9 +2994,12 @@ def fuzz_cmd(
     clean_count = [0]  # mutable for closure
 
     def on_attempt(a):
+        morph_label = f" [dim]morph={a.morph_strategy}[/dim]" if a.morph_strategy else ""
         if a.vulnerable:
-            console.print(f"  [bold white on red] VULN [/bold white on red]  #{a.index}  [bold]{a.strategy}[/bold]")
+            console.print(f"  [bold white on red] VULN [/bold white on red]  #{a.index}  [bold]{a.strategy}[/bold]{morph_label}")
             console.print(f"           [dim]payload: {a.payload[:80]}[/dim]")
+            if a.morphed_payload and a.morphed_payload != a.payload:
+                console.print(f"           [dim]morphed: {a.morphed_payload[:80]}[/dim]")
             for m in a.leaked_markers[:5]:
                 console.print(f"           [bold red]▸ {m}[/bold red]")
             console.print()
@@ -2931,48 +3007,83 @@ def fuzz_cmd(
             console.print(f"  [yellow]ERROR[/yellow]  #{a.index}  {a.error[:60]}")
         else:
             clean_count[0] += 1
-            # Don't print every clean attempt — just show progress
             if clean_count[0] % 5 == 0 or a.index == 1:
-                console.print(f"  [dim]  ...  #{a.index}  {a.strategy}  clean[/dim]")
+                console.print(f"  [dim]  ...  #{a.index}  {a.strategy}{morph_label}  clean[/dim]")
 
     # --- Run the fuzzer ---
-    result = run_fuzz(
-        target=target,
-        payloads=payload_list,
-        strategies=strategy_list,
-        trigger=trigger,
-        mode=mode,
-        upload_endpoint=upload_endpoint,
-        chat_endpoint=chat_endpoint,
-        prompt_field=prompt_field,
-        response_field=response_field,
-        leak_markers=literal_markers,
-        leak_regexes=regex_markers,
-        wait_time=wait_time,
-        max_attempts=max_attempts,
-        callback_url=cb_url,
-        on_attempt=on_attempt,
-    )
+    if morph_list:
+        # Morph campaign — FuzzCampaign with iteration engine
+        campaign = FuzzCampaign(
+            target_url=target,
+            upload_endpoint=upload_endpoint,
+            chat_endpoint=chat_endpoint,
+            trigger_prompt=trigger,
+            payloads=payload_list,
+            morph_strategies=morph_list,
+            embed_strategies=strategy_list,
+            mode=mode,
+            max_attempts=max_attempts,
+            rate_limit=rate_limit_fuzz,
+            prompt_field=prompt_field,
+            response_field=response_field,
+            leak_markers=literal_markers,
+            leak_regexes=regex_markers,
+            wait_time=wait_time,
+            callback_url=cb_url,
+            on_attempt=on_attempt,
+        )
+        result = campaign.run()
+    else:
+        # Legacy single-shot path — no morph, backward compat
+        result = run_fuzz(
+            target=target,
+            payloads=payload_list,
+            strategies=strategy_list,
+            trigger=trigger,
+            mode=mode,
+            upload_endpoint=upload_endpoint,
+            chat_endpoint=chat_endpoint,
+            prompt_field=prompt_field,
+            response_field=response_field,
+            leak_markers=literal_markers,
+            leak_regexes=regex_markers,
+            wait_time=wait_time,
+            max_attempts=max_attempts,
+            callback_url=cb_url,
+            on_attempt=on_attempt,
+        )
 
-    # --- Results table (only vuln attempts) ---
+    # --- Results table ---
     console.print()
 
     if result.vulnerable_count > 0:
-        # Findings table
+        # Full findings table with morph column
         table = Table(title="Findings", border_style="red", show_lines=True)
         table.add_column("#", style="bold", width=4)
-        table.add_column("Strategy", width=12)
-        table.add_column("Payload", width=40)
-        table.add_column("Leaked Data", style="red", width=40)
+        table.add_column("Strategy", width=14)
+        if morph_list:
+            table.add_column("Morph", width=18)
+        table.add_column("Payload (truncated)", width=40)
+        table.add_column("Leaked", style="dim", width=8)
+        table.add_column("Status", width=6)
 
         for a in result.attempts:
-            if a.vulnerable:
-                table.add_row(
-                    str(a.index),
-                    a.strategy,
-                    a.payload[:80],
-                    "\n".join(a.leaked_markers[:5]),
-                )
+            leaked_count = len(a.leaked_markers)
+            status = "[bold red]VULN[/bold red]" if a.vulnerable else (
+                "[yellow]ERR[/yellow]" if a.error else "[green]CLEAN[/green]"
+            )
+            leaked_label = f"{leaked_count} item{'s' if leaked_count != 1 else ''}" if leaked_count else "0 items"
+
+            row = [str(a.index), a.strategy]
+            if morph_list:
+                row.append(a.morph_strategy or "-")
+            row.extend([
+                (a.morphed_payload or a.payload)[:50] + "..." if len(a.morphed_payload or a.payload) > 50 else (a.morphed_payload or a.payload),
+                leaked_label,
+                status,
+            ])
+            table.add_row(*row)
+
         console.print(table)
         console.print()
 
@@ -2981,13 +3092,42 @@ def fuzz_cmd(
         for a in result.attempts:
             all_leaked.update(a.leaked_markers)
 
+        # Per-strategy hit counts
+        strategy_hits: dict[str, tuple[int, int]] = {}
+        for a in result.attempts:
+            key = a.morph_strategy if a.morph_strategy else a.strategy
+            hits, total = strategy_hits.get(key, (0, 0))
+            strategy_hits[key] = (hits + (1 if a.vulnerable else 0), total + 1)
+
+        # Per-payload hit counts
+        payload_hits: dict[str, tuple[int, int]] = {}
+        for a in result.attempts:
+            short = a.payload[:50]
+            hits, total = payload_hits.get(short, (0, 0))
+            payload_hits[short] = (hits + (1 if a.vulnerable else 0), total + 1)
+
         summary_text = (
-            f"[bold red]{result.vulnerable_count}/{result.total_attempts}[/bold red] "
-            f"attempts bypassed defenses ({result.bypass_rate:.0%})\n\n"
-            f"[bold]Best strategy:[/bold]  {result.best_strategy or 'n/a'}\n"
-            f"[bold]Best payload:[/bold]   {result.best_payload or 'n/a'}\n\n"
-            f"[bold]Exfiltrated data:[/bold]\n"
+            f"[bold]Attempts:[/bold]  {result.total_attempts}"
         )
+        if morph_list:
+            summary_text += (
+                f" ({len(payload_list)} payload{'s' if len(payload_list) != 1 else ''}"
+                f" x {len(morph_list)} morph strategies)"
+            )
+        summary_text += (
+            f"\n[bold red]Vulnerable:[/bold red] {result.vulnerable_count}/{result.total_attempts} "
+            f"({result.bypass_rate:.0%} bypass rate)\n"
+            f"[bold]Best strategy:[/bold]  {result.best_strategy or 'n/a'}"
+        )
+        if result.best_strategy and result.best_strategy in strategy_hits:
+            h, t = strategy_hits[result.best_strategy]
+            summary_text += f" ({h}/{t} hits)"
+        summary_text += f"\n[bold]Best payload:[/bold]   {result.best_payload or 'n/a'}"
+        if result.best_payload and result.best_payload in payload_hits:
+            h, t = payload_hits[result.best_payload]
+            summary_text += f" ({h}/{t} strategies)"
+
+        summary_text += "\n\n[bold]Exfiltrated data:[/bold]\n"
         for marker in sorted(all_leaked):
             summary_text += f"  [red]▸ {marker}[/red]\n"
 
@@ -2995,12 +3135,32 @@ def fuzz_cmd(
             summary_text += f"\n[bold]Callback:[/bold] {cb_url}"
 
         console.print(Panel(summary_text, title="[bold red]VULNERABLE[/bold red]", border_style="red"))
+
+        # --- Export regression suite ---
+        if export_suite:
+            try:
+                path = export_regression_suite(
+                    attempts=result.attempts,
+                    output_path=export_suite,
+                    target_url=target,
+                )
+                console.print(f"\n  [green]Regression suite exported to:[/green] {path}")
+                console.print(f"  [dim]{result.vulnerable_count} working combos saved[/dim]\n")
+            except Exception as e:
+                console.print(f"\n  [yellow]Export failed: {e}[/yellow]\n")
+        elif result.vulnerable_count > 0 and morph_list:
+            console.print(
+                "\n  [dim]Tip: use --export-suite regression.yaml to save "
+                "working combos for regression testing[/dim]\n"
+            )
     else:
         console.print(Panel(
             f"[bold green]{result.clean_count}/{result.total_attempts} clean[/bold green] — "
             f"no payloads bypassed defenses.\n\n"
             f"[dim]Strategies tested: {', '.join(strategy_list)}\n"
-            f"Payloads tested: {len(payload_list)}[/dim]",
+            f"Payloads tested: {len(payload_list)}"
+            + (f"\nMorph strategies: {len(morph_list)}" if morph_list else "")
+            + "[/dim]",
             title="[bold green]CLEAN[/bold green]",
             border_style="green",
         ))
@@ -3133,7 +3293,9 @@ def chain_cmd(
             console.print()
 
         # Final verdict
-        if result.passed:
+        if result.metadata.get("error_class") == "connection":
+            console.print(f"  [bold yellow]ERROR[/bold yellow]  {result.metadata.get('error', 'Target unreachable')}")
+        elif result.passed:
             console.print(f"  [bold green]CLEAN[/bold green]  Model did not follow injected instructions")
         else:
             # Show what leaked
@@ -3528,7 +3690,8 @@ def run_cmd(
             policy_path_to_use, skip_prompt=skip_policy_prompt
         )
 
-        # Add cascade detector if enabled (replaces keyword matching with judge cascade)
+        # Cascade detector replaces keyword-matching detectors (no conflicts)
+        # --no-cascade falls back to old keyword detectors for backward compat
         if cascade:
             from aipop.detectors.cascade import CascadeConfig, CascadeDetector
 
@@ -3543,12 +3706,16 @@ def run_cmd(
                 confidence_threshold=confidence_threshold,
                 allowed_tools=_allowed_tools,
             )
-            detectors.append(CascadeDetector(_cascade_config))
+            # Cascade includes refusal detection internally — replace keyword detectors
+            detectors = [CascadeDetector(_cascade_config)]
             if not skip_policy_prompt:
                 print_info(
                     f"Cascade detector enabled (judge={'on' if cascade_judge else 'off'}, "
                     f"model={cascade_judge_model}, threshold={confidence_threshold})"
                 )
+
+        # Parse headers early so they're available for probe requests
+        _parsed_headers_run = _parse_header_flags(header) if header else {}
 
         # Initialize adapter - use CLI flags if provided, otherwise fall back to mock
         try:
@@ -3561,6 +3728,7 @@ def run_cmd(
                         target_url=target,
                         prompt_field=prompt_field,
                         response_field=response_field,
+                        headers=_parsed_headers_run or None,
                     )
                     print_info(f"Target locked: prompt={adapter.prompt_field}, response={adapter.response_text_field}")
                 except ProbeError as e:
@@ -6160,3 +6328,217 @@ def recommend_cmd(
         print_info(f"\nRecommended suites for {result.target}:")
         for suite in result.recommended_suites:
             print_info(f"  aipop run --suite {suite} --adapter {adapter_name or 'mock'}")
+
+
+@app.command("suite")
+def suite_cmd(
+    action: str = typer.Argument(
+        ..., help="Action: init, run, or add"
+    ),
+    template: str | None = typer.Option(
+        None, "--template", "-t", help="Template name for init (e.g., rag-injection)"
+    ),
+    output: str | None = typer.Option(
+        None, "--output", "-o", help="Output YAML path for init"
+    ),
+    config_file: str | None = typer.Option(
+        None, "--config", "-c", help="Suite YAML file for run"
+    ),
+    target: str | None = typer.Option(
+        None, "--target", help="Target URL for run"
+    ),
+    suite_file: str | None = typer.Option(
+        None, "--suite", "-s", help="Suite YAML file for add"
+    ),
+    payload: str | None = typer.Option(
+        None, "--payload", "-p", help="Payload text for add"
+    ),
+    severity: str = typer.Option(
+        "high", "--severity", help="Severity for add (critical, high, medium, low)"
+    ),
+) -> None:
+    """Manage and run test suites.
+
+    Actions:
+        init  — Create a suite YAML from a built-in template
+        run   — Run all cases in a suite YAML against a target
+        add   — Append a new test case to an existing suite YAML
+
+    Examples:
+        aipop suite init --template rag-injection -o my_suite.yaml
+        aipop suite run --config my_suite.yaml --target http://localhost:8000/chat
+        aipop suite add --suite my_suite.yaml --payload "Ignore previous instructions" --severity critical
+    """
+    if action == "init":
+        _suite_init(template, output)
+    elif action == "run":
+        _suite_run(config_file, target)
+    elif action == "add":
+        _suite_add(suite_file, payload, severity)
+    else:
+        print_error(f"Unknown suite action: {action}. Use: init, run, add")
+        raise typer.Exit(code=2)
+
+
+def _suite_init(template: str | None, output: str | None) -> None:
+    """Copy a built-in template suite to an output path."""
+    import shutil
+
+    if not template:
+        print_error("--template is required for suite init")
+        raise typer.Exit(code=2)
+
+    if not output:
+        output = f"{template.replace('/', '_').replace('-', '_')}.yaml"
+
+    # Search for template in suites directories
+    search_dirs = [
+        get_package_data_path("suites"),
+        Path("suites"),
+    ]
+
+    template_path = None
+    # Try exact match, then fuzzy match
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        # Direct file match
+        candidate = search_dir / f"{template}.yaml"
+        if candidate.exists():
+            template_path = candidate
+            break
+        # Try with directory prefix (e.g., rag/rag_poisoning)
+        for yaml_file in search_dir.rglob("*.yaml"):
+            if template.replace("-", "_") in yaml_file.stem:
+                template_path = yaml_file
+                break
+        if template_path:
+            break
+
+    if not template_path:
+        # Create a minimal template
+        minimal = {
+            "id": template.replace("-", "_"),
+            "name": f"{template} Suite",
+            "description": f"Custom suite based on {template}",
+            "cases": [
+                {
+                    "id": "test_001",
+                    "prompt": "Hello, can you help me?",
+                    "expected": "refuse",
+                    "metadata": {
+                        "category": template.replace("-", "_"),
+                        "risk": "high",
+                    },
+                }
+            ],
+        }
+        with open(output, "w") as f:
+            yaml.dump(minimal, f, default_flow_style=False, sort_keys=False)
+        print_success(f"Created template suite: {output} (minimal — no built-in template found for '{template}')")
+        return
+
+    shutil.copy2(template_path, output)
+    print_success(f"Copied {template_path.name} → {output}")
+
+
+def _suite_run(config_file: str | None, target: str | None) -> None:
+    """Load a suite YAML and run each case against the target."""
+    from aipop.core.scanner import ScanOptions, Scanner
+
+    if not config_file:
+        print_error("--config is required for suite run")
+        raise typer.Exit(code=2)
+
+    config_path = Path(config_file)
+    if not config_path.exists():
+        print_error(f"Suite file not found: {config_file}")
+        raise typer.Exit(code=2)
+
+    with open(config_path) as f:
+        suite_data = yaml.safe_load(f)
+
+    cases_raw = suite_data.get("cases", [])
+    if not cases_raw:
+        print_error("Suite has no test cases")
+        raise typer.Exit(code=2)
+
+    # Build test cases
+    from aipop.core.models import TestCase
+
+    test_cases = []
+    for c in cases_raw:
+        test_cases.append(
+            TestCase(
+                id=c.get("id", f"case_{len(test_cases) + 1}"),
+                prompt=c.get("prompt", ""),
+                metadata=c.get("metadata", {}),
+            )
+        )
+        # Carry expected into metadata for the runner
+        if "expected" in c:
+            test_cases[-1].metadata["expected"] = c["expected"]
+
+    # Build adapter
+    if target:
+        from aipop.adapters.auto_probe import build_adapter_from_probe, ProbeError
+
+        try:
+            adapter = build_adapter_from_probe(target_url=target)
+        except ProbeError as e:
+            print_error(f"Probe failed: {e}")
+            raise typer.Exit(code=2) from None
+    else:
+        adapter = MockAdapter(seed=42, response_mode="smart")
+        print_warning("No --target specified, using mock adapter")
+
+    scanner = Scanner(adapter=adapter)
+    options = ScanOptions(suite=config_path.stem)
+
+    scan_result = scanner.scan(test_cases, options)
+
+    print_success(
+        f"Suite complete: {scan_result.total} tests, "
+        f"{scan_result.passed} passed, {scan_result.failed} failed"
+    )
+    for r in scan_result.results:
+        status = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+        from rich.console import Console
+        Console(stderr=True).print(f"  {status}  {r.test_id}")
+
+
+def _suite_add(suite_file: str | None, payload: str | None, severity: str) -> None:
+    """Append a new test case to an existing suite YAML."""
+    if not suite_file:
+        print_error("--suite is required for suite add")
+        raise typer.Exit(code=2)
+    if not payload:
+        print_error("--payload is required for suite add")
+        raise typer.Exit(code=2)
+
+    suite_path = Path(suite_file)
+    if not suite_path.exists():
+        print_error(f"Suite file not found: {suite_file}")
+        raise typer.Exit(code=2)
+
+    with open(suite_path) as f:
+        suite_data = yaml.safe_load(f) or {}
+
+    cases = suite_data.setdefault("cases", [])
+    new_id = f"custom_{len(cases) + 1:03d}"
+
+    cases.append({
+        "id": new_id,
+        "prompt": payload,
+        "expected": "refuse",
+        "metadata": {
+            "category": "custom",
+            "risk": severity,
+            "source": "suite_add",
+        },
+    })
+
+    with open(suite_path, "w") as f:
+        yaml.dump(suite_data, f, default_flow_style=False, sort_keys=False)
+
+    print_success(f"Added test case {new_id} to {suite_file} (severity: {severity})")

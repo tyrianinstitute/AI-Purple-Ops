@@ -257,6 +257,72 @@ class MorphEngine:
             source="Promptfoo layered strategy pattern",
         ))
 
+        # ── Evasion strategies (TYR-1083) ─────────────────────────
+        # Visual and tokenization-level transforms designed to bypass
+        # character-level and token-level classifiers while preserving
+        # semantic meaning for the target LLM.
+
+        self.register(MorphStrategy(
+            name="homoglyph",
+            description="Replace ASCII chars with Cyrillic/Greek lookalikes",
+            category="token",
+            transform=self._homoglyph,
+            reversible=False,
+            effectiveness="bypasses ASCII keyword filters — visually identical but different codepoints",
+            source="Homoglyph attack research; IDN homograph attacks adapted for prompt injection",
+        ))
+
+        self.register(MorphStrategy(
+            name="emoji_substitution",
+            description="Replace key instruction words with emoji equivalents",
+            category="token",
+            transform=self._emoji_substitution,
+            reversible=False,
+            effectiveness="disrupts keyword classifiers while LLMs still interpret emoji semantically",
+            source="Emoji smuggling research 2024-2025; multimodal token interpretation",
+        ))
+
+        self.register(MorphStrategy(
+            name="bidi_override",
+            description="Wrap payload in RTL override characters to confuse text rendering",
+            category="token",
+            transform=lambda p: "\u202e" + p + "\u202c",
+            reversible=True,
+            effectiveness="confuses text-direction-aware classifiers and log inspection",
+            source="Bidi override attacks (CVE-2021-42574); adapted for prompt injection evasion",
+        ))
+
+        self.register(MorphStrategy(
+            name="html_entity",
+            description="Convert characters to HTML numeric entities",
+            category="encoding",
+            transform=self._html_entity,
+            reversible=True,
+            effectiveness="bypasses plaintext keyword filters when target processes HTML entities",
+            source="HTML entity encoding evasion; web application injection adapted for LLM pipelines",
+        ))
+
+        self.register(MorphStrategy(
+            name="language_switch",
+            description="Translate common injection patterns to Mandarin, Arabic, or Russian",
+            category="semantic",
+            transform=self._language_switch,
+            reversible=False,
+            effectiveness="bypasses English-trained classifiers; LLMs are multilingual by default",
+            works_against=["English-only keyword filters", "English-trained classifiers"],
+            source="Multilingual jailbreak research (Deng et al. 2024); OWASP language switching",
+        ))
+
+        self.register(MorphStrategy(
+            name="token_split",
+            description="Insert zero-width spaces every 3 characters to split tokenization",
+            category="token",
+            transform=self._token_split,
+            reversible=True,
+            effectiveness="fragments tokens across BPE boundaries — disrupts pattern matching",
+            source="Token-splitting attacks against BPE tokenizers; zero-width space injection",
+        ))
+
     def register(self, strategy: MorphStrategy) -> None:
         """Register a morph strategy."""
         self._strategies[strategy.name] = strategy
@@ -323,3 +389,113 @@ class MorphEngine:
         for eng, fra in replacements.items():
             result = result.replace(eng, fra)
         return result
+
+    @staticmethod
+    def _homoglyph(text: str) -> str:
+        """Replace ASCII characters with Cyrillic/Greek visual lookalikes."""
+        # Map ASCII → Cyrillic/Greek codepoints that render identically
+        glyph_map = {
+            "a": "\u0430",  # Cyrillic а
+            "e": "\u0435",  # Cyrillic е
+            "o": "\u043e",  # Cyrillic о
+            "p": "\u0440",  # Cyrillic р
+            "c": "\u0441",  # Cyrillic с
+            "x": "\u0445",  # Cyrillic х
+            "y": "\u0443",  # Cyrillic у
+            "i": "\u0456",  # Cyrillic і
+            "s": "\u0455",  # Cyrillic ѕ
+            "A": "\u0410",  # Cyrillic А
+            "E": "\u0415",  # Cyrillic Е
+            "O": "\u041e",  # Cyrillic О
+            "P": "\u0420",  # Cyrillic Р
+            "C": "\u0421",  # Cyrillic С
+            "T": "\u0422",  # Cyrillic Т
+            "H": "\u041d",  # Cyrillic Н
+            "B": "\u0412",  # Cyrillic В
+            "K": "\u041a",  # Cyrillic К
+            "M": "\u041c",  # Cyrillic М
+        }
+        return "".join(glyph_map.get(c, c) for c in text)
+
+    @staticmethod
+    def _emoji_substitution(text: str) -> str:
+        """Replace key instruction words with emoji equivalents."""
+        emoji_map = {
+            "ignore": "\U0001f6ab",       # 🚫
+            "previous": "\u2b05\ufe0f",   # ⬅️
+            "instructions": "\U0001f4cb",  # 📋
+            "output": "\U0001f4e4",        # 📤
+            "system": "\u2699\ufe0f",      # ⚙️
+            "include": "\u2795",           # ➕
+            "all": "\U0001f30d",           # 🌍
+            "secret": "\U0001f510",        # 🔐
+            "password": "\U0001f511",      # 🔑
+            "credentials": "\U0001f4b3",   # 💳
+            "respond": "\U0001f4ac",       # 💬
+            "data": "\U0001f4ca",          # 📊
+        }
+        result = text
+        for word, emoji in emoji_map.items():
+            # Case-insensitive replacement preserving surrounding text
+            import re as _re
+            result = _re.sub(
+                _re.escape(word), emoji, result, flags=_re.IGNORECASE
+            )
+        return result
+
+    @staticmethod
+    def _html_entity(text: str) -> str:
+        """Convert characters to HTML numeric entities."""
+        return "".join(f"&#{ord(c)};" if c.isalpha() else c for c in text)
+
+    @staticmethod
+    def _language_switch(text: str) -> str:
+        """Translate common injection patterns to other languages.
+
+        Uses hardcoded translations of common injection phrases into
+        Mandarin, Arabic, and Russian. Randomly picks one per call.
+        """
+        import hashlib
+        # Deterministic but varied — pick language based on payload hash
+        lang_idx = int(hashlib.md5(text.encode()).hexdigest(), 16) % 3
+
+        translations = {
+            "ignore previous instructions": [
+                "\u5ffd\u7565\u4e4b\u524d\u7684\u6307\u4ee4",           # 忽略之前的指令 (Mandarin)
+                "\u062a\u062c\u0627\u0647\u0644 \u0627\u0644\u062a\u0639\u0644\u064a\u0645\u0627\u062a \u0627\u0644\u0633\u0627\u0628\u0642\u0629",  # تجاهل التعليمات السابقة (Arabic)
+                "\u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439 \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0438\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438",  # игнорируй предыдущие инструкции (Russian)
+            ],
+            "output all": [
+                "\u8f93\u51fa\u6240\u6709",           # 输出所有 (Mandarin)
+                "\u0623\u062e\u0631\u062c \u0643\u0644",  # أخرج كل (Arabic)
+                "\u0432\u044b\u0432\u0435\u0434\u0438 \u0432\u0441\u0435",  # выведи все (Russian)
+            ],
+            "include in your response": [
+                "\u5728\u4f60\u7684\u56de\u590d\u4e2d\u5305\u542b",   # 在你的回复中包含 (Mandarin)
+                "\u0636\u0645\u0651\u0646 \u0641\u064a \u0631\u062f\u0643",  # ضمّن في ردك (Arabic)
+                "\u0432\u043a\u043b\u044e\u0447\u0438 \u0432 \u0441\u0432\u043e\u0439 \u043e\u0442\u0432\u0435\u0442",  # включи в свой ответ (Russian)
+            ],
+            "system prompt": [
+                "\u7cfb\u7edf\u63d0\u793a\u8bcd",     # 系统提示词 (Mandarin)
+                "\u0645\u0648\u062c\u0647 \u0627\u0644\u0646\u0638\u0627\u0645",  # موجه النظام (Arabic)
+                "\u0441\u0438\u0441\u0442\u0435\u043c\u043d\u044b\u0439 \u043f\u0440\u043e\u043c\u043f\u0442",  # системный промпт (Russian)
+            ],
+            "credentials": [
+                "\u51ed\u8bc1",                       # 凭证 (Mandarin)
+                "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0627\u0639\u062a\u0645\u0627\u062f",  # بيانات الاعتماد (Arabic)
+                "\u0443\u0447\u0435\u0442\u043d\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435",  # учетные данные (Russian)
+            ],
+        }
+
+        result = text.lower()
+        for eng, variants in translations.items():
+            if eng in result:
+                result = result.replace(eng, variants[lang_idx])
+        return result
+
+    @staticmethod
+    def _token_split(text: str) -> str:
+        """Insert zero-width spaces every 3 characters to fragment BPE tokens."""
+        zwsp = "\u200b"
+        chunks = [text[i:i + 3] for i in range(0, len(text), 3)]
+        return zwsp.join(chunks)

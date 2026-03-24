@@ -209,9 +209,14 @@ class ChainRunner:
             chain_result.steps.append(step_result)
 
             if step_result.status == "error":
-                # Setup failure — mark as error, stop chain
-                chain_result.passed = False
-                chain_result.metadata["error"] = f"Step {step_result.step_id} failed: {step_result.error}"
+                # Connection errors are NOT vulnerabilities — mark differently
+                if step_result.error and step_result.error.startswith("ERROR: target unreachable"):
+                    chain_result.passed = True  # Not a vulnerability finding
+                    chain_result.metadata["error"] = step_result.error
+                    chain_result.metadata["error_class"] = "connection"
+                else:
+                    chain_result.passed = False
+                    chain_result.metadata["error"] = f"Step {step_result.step_id} failed: {step_result.error}"
                 break
 
         # The final step's response is what we classify
@@ -323,6 +328,19 @@ class ChainRunner:
                     method=method, url=url,
                     headers=headers, timeout=self.timeout
                 )
+        except (
+            requests.ConnectionError,
+            requests.exceptions.ConnectTimeout,
+            requests.exceptions.ReadTimeout,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            OSError,
+        ) as e:
+            return StepResult(
+                step_id=step_id, action="http_request", status="error",
+                duration_ms=(time.time() - start) * 1000,
+                error=f"ERROR: target unreachable — {type(e).__name__}: {e}",
+            )
         except requests.RequestException as e:
             return StepResult(
                 step_id=step_id, action="http_request", status="error",

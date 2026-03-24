@@ -35,13 +35,22 @@ OPENAPI_PATHS = ["/openapi.json", "/docs", "/swagger.json", "/api-docs",
 
 PROBE_MESSAGE = "Hello, can you help me?"
 
+# Common AI endpoint paths to try when root URL probe fails
+COMMON_AI_PATHS = [
+    "/chat", "/api/generate", "/v1/chat/completions", "/api/chat",
+    "/completions", "/api/v1/chat", "/generate", "/api/completions",
+]
 
-def probe_target(target_url: str, timeout: int = 15) -> dict[str, Any]:
+
+def probe_target(
+    target_url: str, timeout: int = 15, headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Probe a target URL and discover its request/response format.
 
     Args:
         target_url: The endpoint URL to probe
         timeout: Request timeout in seconds
+        headers: Extra headers to include in probe requests (e.g. from -H flag)
 
     Returns:
         Config dict compatible with CustomHTTPAdapter
@@ -49,6 +58,10 @@ def probe_target(target_url: str, timeout: int = 15) -> dict[str, Any]:
     Raises:
         ProbeError: If the target can't be reached or format can't be determined
     """
+    _headers = {"Content-Type": "application/json"}
+    if headers:
+        _headers.update(headers)
+
     results = {
         "base_url": target_url,
         "method": "POST",
@@ -63,7 +76,7 @@ def probe_target(target_url: str, timeout: int = 15) -> dict[str, Any]:
     base = _extract_base_url(target_url)
     for path in OPENAPI_PATHS:
         try:
-            r = requests.get(f"{base}{path}", timeout=5)
+            r = requests.get(f"{base}{path}", timeout=5, headers=headers or {})
             if r.status_code == 200 and "paths" in r.text:
                 results["openapi"] = r.json()
                 results["probe_log"].append(f"Found OpenAPI spec at {base}{path}")
@@ -80,7 +93,7 @@ def probe_target(target_url: str, timeout: int = 15) -> dict[str, Any]:
 
         try:
             r = requests.post(target_url, json=body, timeout=timeout,
-                              headers={"Content-Type": "application/json"})
+                              headers=_headers)
         except requests.ConnectionError:
             raise ProbeError(
                 f"Can't connect to {target_url}. Is the target running?"
@@ -151,6 +164,30 @@ def probe_target(target_url: str, timeout: int = 15) -> dict[str, Any]:
         )
 
     if not results["prompt_field"]:
+        # Root URL failed — try common AI endpoint paths before giving up
+        from urllib.parse import urlparse
+        parsed = urlparse(target_url)
+        # Only try path fallbacks if the target looks like a root or non-API path
+        if parsed.path in ("", "/") or not any(
+            seg in parsed.path for seg in ("chat", "generate", "completions", "api")
+        ):
+            base = _extract_base_url(target_url)
+            results["probe_log"].append("Root URL failed, trying common AI endpoint paths...")
+            for ai_path in COMMON_AI_PATHS:
+                alt_url = f"{base}{ai_path}"
+                try:
+                    alt_result = probe_target(alt_url, timeout=timeout, headers=headers)
+                    if alt_result["prompt_field"] and alt_result["response_field"]:
+                        alt_result["probe_log"] = (
+                            results["probe_log"]
+                            + [f"Found working endpoint at {alt_url}"]
+                            + alt_result["probe_log"]
+                        )
+                        return alt_result
+                except (ProbeError, Exception):
+                    results["probe_log"].append(f"  {ai_path} — no luck")
+                    continue
+
         raise ProbeError(
             f"Can't figure out how to talk to {target_url}.\n"
             f"Tried prompt fields: {', '.join(PROMPT_FIELDS)}\n"
@@ -168,6 +205,7 @@ def build_adapter_from_probe(
     prompt_field: str | None = None,
     response_field: str | None = None,
     timeout: int = 15,
+    headers: dict[str, str] | None = None,
 ) -> CustomHTTPAdapter:
     """Build a working adapter for a target URL.
 
@@ -178,10 +216,15 @@ def build_adapter_from_probe(
         prompt_field: Override prompt field name (skip probe for request format)
         response_field: Override response field name (skip probe for response format)
         timeout: Request timeout
+        headers: Extra headers to include in probe and adapter requests
 
     Returns:
         Ready-to-use CustomHTTPAdapter
     """
+    _base_headers: dict[str, str] = {"Content-Type": "application/json"}
+    if headers:
+        _base_headers.update(headers)
+
     if prompt_field and response_field:
         # User told us everything — no probe needed
         config = {
@@ -189,7 +232,7 @@ def build_adapter_from_probe(
                 "base_url": target_url,
                 "method": "POST",
                 "timeout": timeout,
-                "headers": {"Content-Type": "application/json"},
+                "headers": _base_headers,
             },
             "auth": {"type": "none"},
             "request": {"prompt_field": prompt_field},
@@ -198,7 +241,7 @@ def build_adapter_from_probe(
         return CustomHTTPAdapter(config)
 
     # Probe the target
-    probe_result = probe_target(target_url, timeout=timeout)
+    probe_result = probe_target(target_url, timeout=timeout, headers=headers)
 
     # Override with explicit values if given
     if prompt_field:
@@ -211,7 +254,7 @@ def build_adapter_from_probe(
             "base_url": probe_result["base_url"],
             "method": probe_result["method"],
             "timeout": timeout,
-            "headers": {"Content-Type": "application/json"},
+            "headers": _base_headers,
         },
         "auth": {"type": "none"},
         "request": {
