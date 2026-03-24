@@ -2238,6 +2238,18 @@ def scan_cmd(
     concurrency: int = typer.Option(
         5, "--concurrency", help="Max parallel requests (default: 5)"
     ),
+    cascade_judge: bool = typer.Option(
+        True, "--cascade-judge/--no-cascade-judge",
+        help="Enable LLM judge layer in cascade (costs API calls). Default: enabled.",
+    ),
+    cascade_judge_model: str = typer.Option(
+        "gpt-4o-mini", "--cascade-judge-model",
+        help="Model for cascade LLM judge layer (default: gpt-4o-mini).",
+    ),
+    confidence_threshold: str = typer.Option(
+        "firm", "--confidence-threshold",
+        help="Minimum confidence to report: certain, firm, tentative.",
+    ),
 ) -> None:
     """Scan a target — recon, test, report. One command, full picture.
 
@@ -2459,6 +2471,21 @@ def scan_cmd(
 
         # Phase 3: Scan
         _policy_config, detectors = _load_policy_with_prompt(None, skip_prompt=True, quiet=True)
+
+        # Add cascade detector (always on for scan mode)
+        from aipop.detectors.cascade import CascadeConfig, CascadeDetector
+
+        _allowed_tools = None
+        if _policy_config and _policy_config.tool_policy:
+            _allowed_tools = set(_policy_config.tool_policy.allowed_tools)
+
+        _cascade_config = CascadeConfig(
+            judge_enabled=cascade_judge,
+            judge_model=cascade_judge_model,
+            confidence_threshold=confidence_threshold,
+            allowed_tools=_allowed_tools,
+        )
+        detectors.append(CascadeDetector(_cascade_config))
 
         scanner = Scanner(adapter=adapter, detectors=detectors)
         scan_options = ScanOptions(
@@ -3304,6 +3331,22 @@ def run_cmd(
     concurrency: int = typer.Option(
         5, "--concurrency", help="Max parallel requests (default: 5)"
     ),
+    cascade: bool = typer.Option(
+        True, "--cascade/--no-cascade",
+        help="Use judge cascade detector (replaces keyword matching). Default: enabled.",
+    ),
+    cascade_judge: bool = typer.Option(
+        True, "--cascade-judge/--no-cascade-judge",
+        help="Enable LLM judge layer in cascade (costs API calls). Default: enabled.",
+    ),
+    cascade_judge_model: str = typer.Option(
+        "gpt-4o-mini", "--cascade-judge-model",
+        help="Model for cascade LLM judge layer (default: gpt-4o-mini).",
+    ),
+    confidence_threshold: str = typer.Option(
+        "firm", "--confidence-threshold",
+        help="Minimum confidence to report a finding: certain, firm, tentative.",
+    ),
 ) -> None:
     """Execute test suite with real runner, adapters, and reporters.
 
@@ -3484,6 +3527,28 @@ def run_cmd(
         _policy_config, detectors = _load_policy_with_prompt(
             policy_path_to_use, skip_prompt=skip_policy_prompt
         )
+
+        # Add cascade detector if enabled (replaces keyword matching with judge cascade)
+        if cascade:
+            from aipop.detectors.cascade import CascadeConfig, CascadeDetector
+
+            # Build allowed_tools set from policy if available
+            _allowed_tools = None
+            if _policy_config and _policy_config.tool_policy:
+                _allowed_tools = set(_policy_config.tool_policy.allowed_tools)
+
+            _cascade_config = CascadeConfig(
+                judge_enabled=cascade_judge,
+                judge_model=cascade_judge_model,
+                confidence_threshold=confidence_threshold,
+                allowed_tools=_allowed_tools,
+            )
+            detectors.append(CascadeDetector(_cascade_config))
+            if not skip_policy_prompt:
+                print_info(
+                    f"Cascade detector enabled (judge={'on' if cascade_judge else 'off'}, "
+                    f"model={cascade_judge_model}, threshold={confidence_threshold})"
+                )
 
         # Initialize adapter - use CLI flags if provided, otherwise fall back to mock
         try:
