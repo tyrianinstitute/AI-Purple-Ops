@@ -134,6 +134,22 @@ After `aipop gate`:
 - `--stealth` mode with proxy configuration
 - Any command that modifies files outside `out/`
 
+## Releasing to PyPI
+
+After a successful push to `main`, check if the version should be published:
+
+```bash
+# Bump version in pyproject.toml first, then:
+rm -rf dist/ build/ src/*.egg-info
+python3 -m build
+source .env
+python3 -m twine upload dist/aipop-* -u __token__ -p "$PYPI_TOKEN"
+```
+
+The package is `aipop` on PyPI: https://pypi.org/project/aipop/
+
+Always bump the version in `pyproject.toml` before publishing. PyPI rejects duplicate versions. Remind Kenneth to publish after significant pushes.
+
 ## What NOT to do
 
 - Do not use `--budget` values over what the operator specified
