@@ -288,11 +288,27 @@ class GCGOptimizer:
     ) -> list[tuple[str, float]]:
         """Black-box optimization using gradient-free search.
 
+        EXPERIMENTAL: not real loss estimation. The loss values returned by this
+        method are synthetic placeholders used only for seed ordering. They do
+        NOT reflect actual model behaviour. Real black-box optimisation requires
+        an adapter round-trip that is not yet implemented.
+
         Uses:
         - Random search
         - Evolutionary algorithms (can integrate with GeneticMutator)
         - Simple hill climbing
         """
+        import warnings
+        warnings.warn(
+            "GCGOptimizer._black_box_optimize() returns synthetic loss values, "
+            "not real model evaluations. Results are seed-ranked only.",
+            stacklevel=2,
+        )
+        logger.warning(
+            "EXPERIMENTAL: black-box loss values are placeholders (0.5 + i*0.1). "
+            "These are NOT real loss signals."
+        )
+
         # For black-box mode, we can't compute gradients
         # Instead, use random search or evolutionary approach
         # This is a simplified version - full implementation would use adapter
@@ -311,8 +327,8 @@ class GCGOptimizer:
         # In real black-box mode, these would be evaluated via adapter
         results = []
         for i, suffix in enumerate(seed_suffixes[:10]):
-            # WARNING: Placeholder loss — real loss requires adapter-based evaluation.
-            # This synthetic gradient is only useful for seed ranking, not optimization.
+            # EXPERIMENTAL: Placeholder loss — real loss requires adapter-based evaluation.
+            # This synthetic value is only useful for seed ranking, not optimization.
             estimated_loss = 0.5 + (i * 0.1)  # Placeholder: not a real loss signal
             results.append((suffix, estimated_loss))
 

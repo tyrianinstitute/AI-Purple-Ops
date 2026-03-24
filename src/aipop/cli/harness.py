@@ -71,7 +71,7 @@ from aipop.cli.workspace_commands import register_workspace_commands
 register_workspace_commands(app)
 
 
-@app.command("profile")
+@app.command("profile", rich_help_panel="Workbench")
 def profile_cmd(
     action: str = typer.Argument("list", help="Action: list, load <name>, save <name>, show <name>"),
     name: str | None = typer.Argument(None, help="Profile name"),
@@ -145,7 +145,7 @@ def profile_cmd(
         console.print("  [yellow]Usage:[/] profile list | load <name> | save <name> | show <name>")
 
 
-@app.command("repl")
+@app.command("repl", rich_help_panel="Workbench")
 def repl_cmd() -> None:
     """Interactive workbench — the full engagement loop in one session.
 
@@ -159,7 +159,7 @@ def repl_cmd() -> None:
     run_repl()
 
 
-@app.command("tool")
+@app.command("tool", rich_help_panel="Workbench")
 def tool_cmd(
     ctx: typer.Context,
     tool_name: str = typer.Argument(help="Tool to invoke: pyrit, promptfoo, garak, or 'list'"),
@@ -221,7 +221,7 @@ def tool_cmd(
         raise typer.Exit(code=3) from None
 
 
-@app.command("morph")
+@app.command("morph", rich_help_panel="Workbench")
 def morph_cmd(
     payload: str = typer.Argument(help="Payload text to transform"),
     strategy: str = typer.Option(
@@ -292,7 +292,7 @@ def morph_cmd(
         raise typer.Exit(code=2) from None
 
 
-@app.command("inspect")
+@app.command("inspect", rich_help_panel="Diagnostics")
 def inspect_cmd(
     ctx: typer.Context,
     index: int = typer.Argument(-1, help="History entry index to inspect (-1 = last)"),
@@ -363,50 +363,50 @@ plugins_app = typer.Typer(
     name="plugins",
     help="Manage attack plugins",
 )
-app.add_typer(plugins_app, name="plugins")
+app.add_typer(plugins_app, name="plugins", rich_help_panel="Diagnostics")
 
 # Create setup subcommand group
 from aipop.cli.setup import app as setup_app
 
-app.add_typer(setup_app, name="setup")
+app.add_typer(setup_app, name="setup", rich_help_panel="Diagnostics")
 
-# Create CTF subcommand group
+# Create CTF subcommand group (experimental — hidden from main help)
 from aipop.cli.ctf import app as ctf_app
 
-app.add_typer(ctf_app, name="ctf")
+app.add_typer(ctf_app, name="ctf", hidden=True, rich_help_panel="Experimental")
 
-# Create MCP subcommand group
+# Create MCP subcommand group (experimental — hidden from main help)
 from aipop.cli.mcp_commands import app as mcp_app
 
-app.add_typer(mcp_app, name="mcp")
+app.add_typer(mcp_app, name="mcp", hidden=True, rich_help_panel="Experimental")
 
 # Create Payloads subcommand group
 from aipop.cli.payloads import app as payloads_app
 
-app.add_typer(payloads_app, name="payloads")
+app.add_typer(payloads_app, name="payloads", rich_help_panel="Diagnostics")
 
 # Create Debug subcommand group
 from aipop.cli.debug_commands import app as debug_app
 
-app.add_typer(debug_app, name="debug")
+app.add_typer(debug_app, name="debug", rich_help_panel="Diagnostics", hidden=True)
 
 # Create Doctor subcommand group (v1.2.3)
 from aipop.cli.doctor import app as doctor_app
 
-app.add_typer(doctor_app, name="doctor")
+app.add_typer(doctor_app, name="doctor", rich_help_panel="Diagnostics")
 
 # Create Sessions subcommand group (v1.2.3)
 from aipop.cli.sessions import app as sessions_app
 
-app.add_typer(sessions_app, name="sessions")
+app.add_typer(sessions_app, name="sessions", rich_help_panel="Diagnostics")
 
 # Import batch command
 from aipop.cli.batch import batch_attack as batch_attack_func
 
-app.command(name="batch-attack")(batch_attack_func)
+app.command(name="batch-attack", rich_help_panel="Diagnostics")(batch_attack_func)
 
 
-@app.command("replay-conversation")
+@app.command("replay-conversation", rich_help_panel="Diagnostics")
 def replay_conversation_cmd(
     conversation_id: str = typer.Argument(..., help="Conversation ID to replay"),
     format: str = typer.Option(
@@ -492,7 +492,7 @@ def replay_conversation_cmd(
         raise typer.Exit(1)
 
 
-@app.command("list-conversations")
+@app.command("list-conversations", rich_help_panel="Diagnostics")
 def list_conversations_cmd(
     db_path: str = typer.Option(
         "out/conversations.duckdb",
@@ -664,14 +664,14 @@ def _apply_cli_overrides(
     return cfg
 
 
-@app.command("version")
+@app.command("version", rich_help_panel="Diagnostics")
 def version_cmd() -> None:
     """Print version."""
     log.info(f"AI Purple Ops version {__version__}")
     log.ok("Done")
 
 
-@app.command("export-traffic")
+@app.command("export-traffic", rich_help_panel="Diagnostics")
 def export_traffic_cmd(
     session_id: str = typer.Argument(..., help="Session ID to export"),
     format: str = typer.Option("json", "--format", "-f", help="Export format (json/har)"),
@@ -719,7 +719,7 @@ def export_traffic_cmd(
         raise typer.Exit(1) from None
 
 
-@app.command("generate-pdf")
+@app.command("generate-pdf", rich_help_panel="Diagnostics")
 def generate_pdf_cmd(
     json_report: str = typer.Argument(..., help="Path to JSON report file"),
     output: str = typer.Option("report.pdf", "--output", "-o", help="Output PDF file path"),
@@ -747,7 +747,7 @@ def generate_pdf_cmd(
         raise typer.Exit(1) from None
 
 
-@app.command("engagement")
+@app.command("engagement", rich_help_panel="Diagnostics")
 def manage_engagement(
     action: str = typer.Argument(..., help="Action: create, list, show, update-status"),
     engagement_id: str | None = typer.Option(None, "--id", help="Engagement ID"),
@@ -1195,7 +1195,7 @@ def _display_fingerprint_result(result: Any) -> None:
     console.print(f"\nResults saved: out/fingerprints/{result.model_id.replace(':', '_')}.json")
 
 
-@app.command("fingerprint")
+@app.command("fingerprint", rich_help_panel="Diagnostics")
 def fingerprint_cmd(
     adapter: str = typer.Option(
         ..., "--adapter", "-a", help="Adapter to use (openai, anthropic, mock, etc.)"
@@ -1308,7 +1308,7 @@ def fingerprint_cmd(
         raise typer.Exit(code=1) from None
 
 
-@app.command("generate-suffix")
+@app.command("generate-suffix", rich_help_panel="Diagnostics", hidden=True)
 def generate_suffix_cmd(
     prompt: str = typer.Argument(..., help="Harmful prompt to jailbreak"),
     target: str = typer.Option("Sure, I can help", help="Desired output prefix"),
@@ -1812,7 +1812,7 @@ def generate_suffix_cmd(
         raise typer.Exit(code=1) from None
 
 
-@app.command("test-suffix")
+@app.command("test-suffix", rich_help_panel="Diagnostics", hidden=True)
 def test_suffix_cmd(
     prompt: str = typer.Argument(..., help="Prompt to test"),
     suffix: str = typer.Argument(..., help="Suffix to append"),
@@ -1897,7 +1897,7 @@ def test_suffix_cmd(
         raise typer.Exit(code=1) from None
 
 
-@app.command("verify-suite")
+@app.command("verify-suite", rich_help_panel="Diagnostics")
 def verify_suite_cmd(
     suite: Path = typer.Argument(..., help="Path to test suite YAML file"),
     adapter: str = typer.Option(..., "--adapter", "-a", help="Adapter to test against"),
@@ -2056,7 +2056,7 @@ def verify_suite_cmd(
         raise typer.Exit(code=1) from None
 
 
-@app.command("recon")
+@app.command("recon", rich_help_panel="Diagnostics")
 def recon_cmd(
     ctx: typer.Context,
     adapter_name: str = typer.Option(
@@ -2153,7 +2153,7 @@ def recon_cmd(
         raise typer.Exit(code=exit_code) from None
 
 
-@app.command("diff")
+@app.command("diff", rich_help_panel="Workbench")
 def diff_cmd(
     ctx: typer.Context,
     before: str = typer.Argument(help="Path to earlier summary.json"),
@@ -2186,7 +2186,7 @@ def diff_cmd(
         raise typer.Exit(code=4) from None
 
 
-@app.command("scan")
+@app.command("scan", rich_help_panel="Primary")
 def scan_cmd(
     ctx: typer.Context,
     target: str | None = typer.Argument(
@@ -2745,7 +2745,7 @@ def _emit_json_error(ctx: typer.Context, message: str) -> None:
     out.write(error_json + "\n")
 
 
-@app.command("fuzz")
+@app.command("fuzz", rich_help_panel="Primary")
 def fuzz_cmd(
     target: str = typer.Argument(..., help="Base URL of the target (e.g. http://localhost:8000)"),
     payloads: str = typer.Option(
@@ -3174,7 +3174,7 @@ def fuzz_cmd(
 
 
 
-@app.command("craft")
+@app.command("craft", rich_help_panel="Workbench")
 def craft_cmd(
     payload: str = typer.Argument(..., help="Injection payload text to embed in the document"),
     strategy: str = typer.Option("hidden_text", "--strategy", "-s", help="Embedding strategy: hidden_text, metadata, annotation"),
@@ -3211,7 +3211,7 @@ def craft_cmd(
     console.print(f"  [dim]Looks clean when opened. Payload visible to text extractors only.[/dim]")
 
 
-@app.command("chain")
+@app.command("chain", rich_help_panel="Primary")
 def chain_cmd(
     ctx: typer.Context,
     chain_file: str = typer.Argument(
@@ -3338,7 +3338,7 @@ def chain_cmd(
         console.print(f"  ╰──────────────────────────────────────────────────────────╯")
 
 
-@app.command("run")
+@app.command("run", rich_help_panel="Primary")
 def run_cmd(
     ctx: typer.Context,
     suite: str | None = typer.Option(None, "--suite", "-s", help="Suite name to execute. Defaults to workspace template or 'normal'."),
@@ -4125,7 +4125,7 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
         raise typer.Exit(code=1) from e
 
 
-@app.command("mutate")
+@app.command("mutate", rich_help_panel="Workbench")
 def mutate_cmd(
     prompt: str = typer.Argument(..., help="Prompt to mutate"),
     config: Path | None = typer.Option(None, "--config", "-c", help="Mutation config YAML file"),
@@ -4249,7 +4249,7 @@ def mutate_cmd(
     engine.close()
 
 
-@app.command("gate")
+@app.command("gate", rich_help_panel="Primary")
 def gate_cmd(
     ctx: typer.Context,
     summary: Path | None = typer.Option(
@@ -4498,7 +4498,7 @@ def gate_cmd(
         raise typer.Exit(code=1) from e
 
 
-@app.command("list")
+@app.command("list", rich_help_panel="Diagnostics")
 def list_cmd(
     resource: str = typer.Argument(
         "suites", help="Resource to list: 'suites' (more types coming in future releases)."
@@ -4615,7 +4615,7 @@ def _list_suites(show_empty: bool = False) -> None:
     print_info(f"Total: {total_suites} suites, {total_files} files, {total_cases} test cases")
 
 
-@app.command("config")
+@app.command("config", rich_help_panel="Diagnostics")
 def config_cmd(
     action: str = typer.Argument(
         "show", help="Action: 'show' (more actions coming in future releases)."
@@ -4725,7 +4725,7 @@ def _config_validate(config_path: Path | None) -> None:
         raise typer.Exit(code=1) from None
 
 
-@app.command("recipe")
+@app.command("recipe", rich_help_panel="Diagnostics")
 def recipe_cmd(
     action: str = typer.Argument("list", help="Action: 'run', 'list', 'validate', or 'preview'."),
     recipe_name: str | None = typer.Option(
@@ -5108,7 +5108,7 @@ def _recipe_list() -> None:
     console.print(f"\n[dim]Total: {total_recipes} recipe(s)[/]")
 
 
-@app.command("suites")
+@app.command("suites", rich_help_panel="Diagnostics")
 def suites_cmd(
     action: str = typer.Argument("list", help="Action: 'list' or 'info'"),
     suite: str | None = typer.Option(None, "--suite", "-s", help="Suite name (for info)"),
@@ -5244,7 +5244,7 @@ def _suites_info(suite_name: str) -> None:
     console.print()
 
 
-@app.command("adapter")
+@app.command("adapter", rich_help_panel="Diagnostics")
 def adapter_cmd(
     action: str = typer.Argument("list", help="Action: init, list, test, validate, clean, quick"),
     name: str | None = typer.Option(
@@ -5625,7 +5625,7 @@ def _adapter_quick(
             console.print(f"  2. Test: aipop adapter test --name {name}")
 
 
-@app.command("tools")
+@app.command("tools", rich_help_panel="Diagnostics")
 def tools_cmd(
     action: str = typer.Argument("check", help="Action: install, check, update, uninstall"),
     tool: str | None = typer.Option(
@@ -5964,7 +5964,7 @@ GPU Required: {'Yes' if registry.gpu_required else 'No'}
         console.print(f"  aipop plugins install {name}")
 
 
-@app.command("check")
+@app.command("check", rich_help_panel="Diagnostics")
 def check_cmd():
     """Check system capabilities and plugin status."""
     import os
@@ -6023,10 +6023,10 @@ def check_cmd():
 # Multi-model testing command
 from aipop.cli.multi_model import multi_model_attack as multi_model_func
 
-app.command(name="multi-model")(multi_model_func)
+app.command(name="multi-model", rich_help_panel="Diagnostics", hidden=True)(multi_model_func)
 
 
-@app.command()
+@app.command(rich_help_panel="Diagnostics")
 def cache_stats():
     """Show cache statistics and cost savings."""
     from rich.console import Console
@@ -6067,7 +6067,7 @@ def cache_stats():
     )
 
 
-@app.command()
+@app.command(rich_help_panel="Diagnostics")
 def cache_clear(
     all: bool = typer.Option(False, "--all", help="Clear all entries including valid ones"),
     version: str = typer.Option(
@@ -6111,7 +6111,7 @@ if __name__ == "__main__":
     main()
 
 
-@app.command("coverage")
+@app.command("coverage", rich_help_panel="Workbench")
 def coverage_cmd(
     ctx: typer.Context,
 ) -> None:
@@ -6130,33 +6130,10 @@ def coverage_cmd(
     print_coverage(output_json=output_json)
 
 
-@app.command("diff")
-def diff_cmd(
-    ctx: typer.Context,
-    before: Path = typer.Argument(..., help="Path to earlier summary.json"),
-    after: Path = typer.Argument(..., help="Path to later summary.json"),
-) -> None:
-    """Compare two test runs and show new/resolved/changed findings.
-
-    Examples:
-        aipop diff out/reports/summary_v1.json out/reports/summary_v2.json
-        aipop --output json diff before.json after.json
-    """
-    from aipop.reporters.run_diff import diff_runs, print_diff
-
-    if not before.exists():
-        print_error(f"File not found: {before}")
-        raise typer.Exit(2)
-    if not after.exists():
-        print_error(f"File not found: {after}")
-        raise typer.Exit(2)
-
-    result = diff_runs(before, after)
-    output_json = ctx.obj.get("output_format") == "json"
-    print_diff(result, output_json=output_json)
+# NOTE: duplicate diff command removed — the primary definition is above (diff_cmd at line ~2156)
 
 
-@app.command("export")
+@app.command("export", rich_help_panel="Diagnostics")
 def export_cmd(
     ctx: typer.Context,
     format: str = typer.Argument(..., help="Export format: ghostwriter, dradis, pdf"),
@@ -6205,7 +6182,7 @@ def export_cmd(
         raise typer.Exit(2)
 
 
-@app.command("import-payloads")
+@app.command("import-payloads", rich_help_panel="Diagnostics")
 def import_payloads_cmd(
     source: str = typer.Argument(..., help="Import source: wordlist, burp, or run"),
     input_file: Path = typer.Option(..., "--input", "-i", help="Path to source file"),
@@ -6244,7 +6221,7 @@ def import_payloads_cmd(
     print_success(f"Imported to: {result}")
 
 
-@app.command("discover")
+@app.command("discover", rich_help_panel="Diagnostics")
 def discover_cmd(
     ctx: typer.Context,
     adapter_name: str = typer.Option("mock", "--adapter", "-a", help="Adapter to probe"),
@@ -6294,7 +6271,7 @@ def discover_cmd(
         console.print()
 
 
-@app.command("recommend")
+@app.command("recommend", rich_help_panel="Diagnostics")
 def recommend_cmd(
     ctx: typer.Context,
     engagement_id: str | None = typer.Option(None, "--engagement", help="Engagement ID to check discoveries"),
@@ -6337,7 +6314,7 @@ def recommend_cmd(
             print_info(f"  aipop run --suite {suite} --adapter {adapter_name or 'mock'}")
 
 
-@app.command("suite")
+@app.command("suite", rich_help_panel="Workbench")
 def suite_cmd(
     action: str = typer.Argument(
         ..., help="Action: init, run, or add"

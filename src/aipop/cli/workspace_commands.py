@@ -70,7 +70,7 @@ def _save_workspace(ws) -> None:
 def register_workspace_commands(app: typer.Typer) -> None:
     """Register use, show, set commands on the Typer app."""
 
-    @app.command("use")
+    @app.command("use", rich_help_panel="Primary")
     def use_cmd(
         template: str = typer.Argument(help="Template path (e.g., adversarial/rag_injection)"),
     ) -> None:
@@ -121,7 +121,7 @@ def register_workspace_commands(app: typer.Typer) -> None:
             console.print(f"[red]Failed to load template:[/] {e}")
             raise typer.Exit(code=2) from None
 
-    @app.command("show")
+    @app.command("show", rich_help_panel="Primary")
     def show_cmd(
         what: str = typer.Argument(
             "options",
@@ -155,7 +155,7 @@ def register_workspace_commands(app: typer.Typer) -> None:
         else:
             console.print(f"[yellow]Unknown: show {what}[/]. Try: show options | show advanced | show info")
 
-    @app.command("set")
+    @app.command("set", rich_help_panel="Primary")
     def set_cmd(
         key: str = typer.Argument(help="Option name (e.g., TARGET, ADAPTER, MODEL)"),
         value: str = typer.Argument(help="Option value"),

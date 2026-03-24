@@ -21,7 +21,7 @@ from rich.table import Table
 
 from aipop.utils.adapter_paths import get_adapter_templates_dir
 
-app = typer.Typer(name="mcp", help="MCP adapter commands for CTF and pentesting")
+app = typer.Typer(name="mcp", help="[experimental] MCP adapter commands for CTF and pentesting", hidden=True)
 console = Console()
 
 

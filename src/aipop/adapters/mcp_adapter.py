@@ -240,8 +240,8 @@ class MCPAdapter:
         """
         # Lazy import to avoid circular deps
         try:
-            from aipop.ctf.intelligence.mcp_response_parser import MCPResponseParser
-            from aipop.ctf.intelligence.mcp_scorers import CompositeScorer
+            from aipop.experimental.ctf.intelligence.mcp_response_parser import MCPResponseParser
+            from aipop.experimental.ctf.intelligence.mcp_scorers import CompositeScorer
 
             scorer = CompositeScorer()
             parser = MCPResponseParser()
@@ -323,9 +323,9 @@ class MCPAdapter:
         """
         # Lazy import
         try:
-            from aipop.ctf.intelligence.mcp_response_parser import MCPConversationState
-            from aipop.ctf.intelligence.mcp_scorers import CompositeScorer
-            from aipop.ctf.strategies.payloads.payload_engine import MCPPayloadEngine
+            from aipop.experimental.ctf.intelligence.mcp_response_parser import MCPConversationState
+            from aipop.experimental.ctf.intelligence.mcp_scorers import CompositeScorer
+            from aipop.experimental.ctf.strategies.payloads.payload_engine import MCPPayloadEngine
         except ImportError:
             return ModelResponse(
                 text="Auto mode requires CTF intelligence modules (not installed)",

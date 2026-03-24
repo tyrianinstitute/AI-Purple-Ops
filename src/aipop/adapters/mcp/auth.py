@@ -1,7 +1,10 @@
 """Authentication handler for MCP connections.
 
 Supports Bearer tokens and API keys with token refresh detection.
-OAuth 2.1 with PKCE planned for v1.1.2+.
+
+WARNING: OAuth 2.1 support is a placeholder. Only bearer token and API key
+auth work today. Token refresh (refresh_token()) always returns False.
+Full OAuth 2.1 with PKCE is planned for v1.1.2+.
 
 FUTURE WORK (v1.1.2+):
 - OAuth 2.1 with PKCE authorization code flow

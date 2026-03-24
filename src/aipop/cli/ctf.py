@@ -15,10 +15,10 @@ import typer
 from rich.console import Console
 
 from aipop.adapters.registry import AdapterRegistry
-from aipop.ctf.intelligence.scorers import create_scorer_for_strategy
-from aipop.ctf.orchestrator import CTFOrchestrator
-from aipop.ctf.strategies.registry import get_strategy, list_strategies
-from aipop.ctf.ctf_display import (
+from aipop.experimental.ctf.intelligence.scorers import create_scorer_for_strategy
+from aipop.experimental.ctf.orchestrator import CTFOrchestrator
+from aipop.experimental.ctf.strategies.registry import get_strategy, list_strategies
+from aipop.experimental.ctf.ctf_display import (
     print_ctf_banner,
     show_failure,
     show_strategy_selection,
@@ -26,7 +26,7 @@ from aipop.ctf.ctf_display import (
 )
 from aipop.utils.log_utils import log
 
-app = typer.Typer(help="CTF mode - Objective-based attack workflows (Beta)")
+app = typer.Typer(help="[experimental] CTF mode — objective-based attack workflows. Not production-ready.", hidden=True)
 console = Console()
 
 

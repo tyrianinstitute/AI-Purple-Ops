@@ -1,10 +1,20 @@
-"""CTF attack orchestration system for AI Purple Ops.
+"""CTF attack orchestration — EXPERIMENTAL, moved to aipop.experimental.ctf.
 
-This module provides intelligent, context-aware attack capabilities for CTF challenges,
-including multi-turn orchestration, state machine planning, and objective-based scoring.
+This package is a backwards-compatibility shim. All real code now lives
+under aipop.experimental.ctf. Direct imports still work but emit a
+deprecation warning.
 """
 
-from aipop.ctf.orchestrator import CTFOrchestrator
-from aipop.ctf.pyrit_bridge import AIPurpleOpsTarget
+import warnings as _warnings
+
+_warnings.warn(
+    "aipop.ctf is experimental and has been relocated to aipop.experimental.ctf. "
+    "Update your imports to avoid breakage in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+from aipop.experimental.ctf.orchestrator import CTFOrchestrator
+from aipop.experimental.ctf.pyrit_bridge import AIPurpleOpsTarget
 
 __all__ = ["AIPurpleOpsTarget", "CTFOrchestrator"]
