@@ -973,5 +973,66 @@ code, pre {
 </div>
 
 </div><!-- /.page -->
+
+<!-- Methodology disclosure bubble — fades in on load, dismissible -->
+<div id="methodology-bubble" style="
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    max-width: 420px;
+    background: #1a1a2e;
+    color: #e4e4e7;
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+">
+    <button onclick="document.getElementById('methodology-bubble').style.display='none'" style="
+        position: absolute;
+        top: 8px;
+        right: 12px;
+        background: none;
+        border: none;
+        color: #71717a;
+        font-size: 18px;
+        cursor: pointer;
+        line-height: 1;
+    ">&times;</button>
+    <div style="font-weight: 600; margin-bottom: 8px; color: #a78bfa;">How findings are scored</div>
+    <p style="margin-bottom: 8px;">
+        Severities and framework mappings (OWASP, MITRE ATLAS, CVSS) come from
+        a <strong>static taxonomy file</strong> maintained by the AIPOP project &mdash;
+        not from LLM-generated analysis. Each test case ID maps to a hand-curated
+        entry with a title, description, remediation, and framework references.
+    </p>
+    <p style="margin-bottom: 8px;">
+        <strong>CVSS scores are estimates</strong> based on the vulnerability class,
+        not the specific target&rsquo;s environment. Adjust them based on your
+        assessment context &mdash; a finding in a dev sandbox has different impact
+        than the same finding in production.
+    </p>
+    <p style="color: #a1a1aa;">
+        Review all findings before sharing this report. Remove false positives,
+        adjust severities for your context, and add engagement-specific notes.
+    </p>
+</div>
+<script>
+// Fade in after 1 second
+setTimeout(function() {
+    var b = document.getElementById('methodology-bubble');
+    if (b) { b.style.opacity = '1'; b.style.transform = 'translateY(0)'; }
+}, 1000);
+// Auto-dismiss after 15 seconds
+setTimeout(function() {
+    var b = document.getElementById('methodology-bubble');
+    if (b) { b.style.opacity = '0'; b.style.transform = 'translateY(20px)'; }
+}, 16000);
+</script>
+
 </body>
 </html>
