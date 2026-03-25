@@ -50,8 +50,8 @@ class RunResult:
     """Single test execution result."""
 
     test_id: str
+    prompt: str  # The prompt sent to the target — evidence for reports
     response: str
     passed: bool
     metadata: dict[str, Any]
     detector_results: list[DetectorResult] | None = None  # Policy violation results
-    # TODO(b06): Add evidence_links field

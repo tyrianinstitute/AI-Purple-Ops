@@ -218,6 +218,7 @@ class MockRunner:
 
                 result = RunResult(
                     test_id=test_case.id,
+                    prompt=test_case.prompt,
                     response=final_response,
                     passed=passed,
                     metadata=result_metadata,
@@ -358,6 +359,7 @@ class MockRunner:
 
                 result = RunResult(
                     test_id=test_case.id,
+                    prompt=test_case.prompt,
                     response=response_text,
                     passed=passed,
                     metadata=result_metadata,
@@ -383,6 +385,7 @@ class MockRunner:
 
             return RunResult(
                 test_id=test_case.id,
+                prompt=test_case.prompt,
                 response=f"Error during execution: {e!r}",
                 passed=False,
                 metadata={

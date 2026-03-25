@@ -162,6 +162,7 @@ class LiveRunner:
 
             result = RunResult(
                 test_id=test_case.id,
+                prompt=test_case.prompt,
                 response=model_response.text,
                 passed=passed,
                 metadata=result_metadata,
@@ -176,6 +177,7 @@ class LiveRunner:
             elapsed_ms = (time.time() - start_time) * 1000
             return RunResult(
                 test_id=test_case.id,
+                prompt=test_case.prompt,
                 response=f"Timeout after {self.config.per_test_timeout}s",
                 passed=False,
                 metadata={
@@ -198,6 +200,7 @@ class LiveRunner:
 
             return RunResult(
                 test_id=test_case.id,
+                prompt=test_case.prompt,
                 response=f"ERROR: connection failed — {type(e).__name__}: {e}",
                 passed=True,  # Not a vulnerability finding
                 metadata={
@@ -219,6 +222,7 @@ class LiveRunner:
 
             return RunResult(
                 test_id=test_case.id,
+                prompt=test_case.prompt,
                 response=f"Error: {e!r}",
                 passed=False,
                 metadata={
@@ -475,6 +479,7 @@ class LiveRunner:
         elapsed_ms = (time.time() - start_time) * 1000
         return RunResult(
             test_id=test_case.id,
+            prompt=test_case.prompt,
             response=f"Skipped: budget exceeded (${self.config.budget:.2f})",
             passed=False,
             metadata={

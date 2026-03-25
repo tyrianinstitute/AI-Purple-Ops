@@ -186,8 +186,41 @@ class ReconReport:
         tool_detail = self.tool_evidence[:60] if self.has_tools and self.tool_evidence else "not detected"
         lines.append(_surface_line(self.has_tools, "tool calling", tool_detail if not self.has_tools else ""))
 
-        mem_detail = "stateless" if not self.has_memory else ""
-        lines.append(_surface_line(self.has_memory, "memory", mem_detail))
+        # MCP servers
+        mcp_count = self.capabilities.get("mcp_server_count", 0)
+        if mcp_count:
+            lines.append(_surface_line(True, "MCP servers", f"{mcp_count} connected"))
+        else:
+            lines.append(_surface_line(False, "MCP servers", "not detected"))
+
+        # Database access
+        db_tables = self.capabilities.get("db_tables", [])
+        if db_tables:
+            lines.append(_surface_line(True, "database", f"{len(db_tables)} tables ({', '.join(db_tables[:4])})"))
+        else:
+            lines.append(_surface_line(False, "database", "not detected"))
+
+        # S3 access
+        s3_buckets = self.capabilities.get("s3_buckets", [])
+        if s3_buckets:
+            lines.append(_surface_line(True, "S3 storage", f"{len(s3_buckets)} buckets"))
+        else:
+            lines.append(_surface_line(False, "S3 storage", "not detected"))
+
+        # System prompt leaked
+        if self.capabilities.get("system_prompt_leaked"):
+            lines.append(_surface_line(True, "[red]system prompt LEAKED[/]", "via verbose endpoint"))
+
+        # Memory persistence
+        if self.capabilities.get("memory_canary_recalled"):
+            lines.append(_surface_line(True, "[red]memory PERSISTENT[/]", "canary recalled across sessions"))
+        elif self.capabilities.get("persistent_memory"):
+            mem_type = self.capabilities.get("memory_type", "detected")
+            lines.append(_surface_line(True, "memory", f"{mem_type}"))
+        elif self.has_memory:
+            lines.append(_surface_line(True, "memory", self.memory_evidence[:60] if self.memory_evidence else "detected"))
+        else:
+            lines.append(_surface_line(False, "memory", "stateless"))
 
         code_exec = self.capabilities.get("code_execution", False)
         lines.append(_surface_line(code_exec, "code execution", "not detected" if not code_exec else ""))
@@ -540,6 +573,36 @@ def full_recon(adapter: Any) -> ReconReport:
             report.upload_guarded = http_result.upload_guarded
             report.ingestion_endpoints = http_result.ingestion_endpoints
 
+            # Merge tool/MCP/infrastructure intelligence from HTTP recon
+            if http_result.has_tool_calling:
+                report.has_tools = True
+                report.tool_evidence = f"{len(http_result.tools)} tools via {http_result.tool_source}"
+                report.capabilities["tool_calling"] = True
+            if http_result.has_mcp:
+                report.capabilities["mcp_servers"] = True
+                report.capabilities["mcp_server_count"] = len(http_result.mcp_servers)
+            if http_result.has_db_access:
+                report.capabilities["database_access"] = True
+                report.capabilities["db_tables"] = [t["name"] for t in http_result.db_tables]
+            if http_result.has_s3_access:
+                report.capabilities["s3_access"] = True
+                report.capabilities["s3_buckets"] = list(http_result.s3_buckets.keys())
+            if http_result.system_prompt_leaked:
+                report.capabilities["system_prompt_leaked"] = True
+            if http_result.has_audit_log:
+                report.capabilities["audit_log"] = True
+
+            # Merge memory persistence findings
+            if http_result.has_memory:
+                report.has_memory = True
+                report.memory_evidence = http_result.memory_evidence
+                report.capabilities["persistent_memory"] = True
+                report.capabilities["memory_type"] = http_result.memory_type
+                if http_result.memory_canary_recalled:
+                    report.capabilities["memory_canary_recalled"] = True
+                if http_result.memory_endpoints:
+                    report.capabilities["memory_endpoints"] = http_result.memory_endpoints
+
             # Convert HTTP discovered endpoints to report format
             for ep in http_result.discovered_endpoints:
                 report.discovered_endpoints.append(DiscoveredEndpoint(
@@ -556,10 +619,15 @@ def full_recon(adapter: Any) -> ReconReport:
 
     # ── Phase 2: Behavioral probes ──────────────────────────────
     _status("phase 2/4 — behavioral probes (RAG, tools, memory)")
+    if report.has_tools:
+        _status(f"  ↳ tools: already detected by HTTP recon ({report.tool_evidence})", "dim green")
     try:
         from aipop.intelligence.discovery import TargetDiscovery
 
         discovery = TargetDiscovery()
+
+        # Run probes with progress feedback (each probe takes ~15-20s)
+        _status("  ↳ probing RAG retrieval...")
         disc_result = discovery.discover(adapter, verbose=False)
 
         # Report behavioral findings inline
@@ -568,7 +636,9 @@ def full_recon(adapter: Any) -> ReconReport:
         else:
             _status("  ↳ RAG: not detected")
         if disc_result.capabilities.get("tool_calling"):
-            _status(f"  ↳ tools detected", "dim green")
+            _status(f"  ↳ tools confirmed by behavioral probe", "dim green")
+        elif report.has_tools:
+            _status("  ↳ tools: behavioral probe inconclusive, HTTP detection stands", "dim yellow")
         else:
             _status("  ↳ tools: not detected")
         if disc_result.capabilities.get("multi_turn_memory"):
@@ -576,16 +646,24 @@ def full_recon(adapter: Any) -> ReconReport:
         else:
             _status("  ↳ memory: stateless")
 
-        # Map behavioral results into report
-        report.has_rag = disc_result.capabilities.get("rag_retrieval", False)
-        report.rag_evidence = disc_result.details.get("rag_retrieval", "")
-        report.has_tools = disc_result.capabilities.get("tool_calling", False)
-        report.tool_evidence = disc_result.details.get("tool_calling", "")
-        report.has_memory = disc_result.capabilities.get("multi_turn_memory", False)
-        report.memory_evidence = disc_result.details.get("multi_turn_memory", "")
+        # Map behavioral results into report — ENRICH, never OVERRIDE.
+        # HTTP recon (Phase 1) may have already detected tools, RAG, etc.
+        # via endpoint probing. Behavioral probes add evidence but cannot
+        # erase a positive finding from HTTP recon.
+        if disc_result.capabilities.get("rag_retrieval"):
+            report.has_rag = True
+            report.rag_evidence = disc_result.details.get("rag_retrieval", "")
+        if disc_result.capabilities.get("tool_calling"):
+            report.has_tools = True
+            report.tool_evidence = disc_result.details.get("tool_calling", "")
+        if disc_result.capabilities.get("multi_turn_memory"):
+            report.has_memory = True
+            report.memory_evidence = disc_result.details.get("multi_turn_memory", "")
 
-        # Carry over all capabilities for the report
-        report.capabilities = disc_result.capabilities
+        # Merge behavioral capabilities — don't wipe Phase 1 findings
+        for k, v in disc_result.capabilities.items():
+            if k not in report.capabilities or v:
+                report.capabilities[k] = v
 
         # If HTTP recon found uploads, merge with behavioral discovery
         if "file_upload" in disc_result.capabilities:

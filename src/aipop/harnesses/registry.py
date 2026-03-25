@@ -29,6 +29,7 @@ class HarnessResult:
         """Convert to RunResult for the standard reporting pipeline."""
         return RunResult(
             test_id=self.test_id,
+            prompt="",  # Harness tests don't have a single prompt
             response=self.details,
             passed=self.passed,
             metadata={

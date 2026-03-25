@@ -196,6 +196,7 @@ class JSONReporter:
             result_obj = {
                 "test_id": r.test_id,
                 **taxonomy_info,
+                "prompt": r.prompt,
                 "passed": r.passed,
                 "response": r.response,
                 "metadata": r.metadata,

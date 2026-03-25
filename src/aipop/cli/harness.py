@@ -559,7 +559,7 @@ def agent_info_callback(value: bool) -> None:
         "description": "AI Purple Ops - agentic AI security testing harness",
         "output_formats": ["text", "json"],
         "exit_codes": {"0": "success", "1": "gate/threshold failed", "2": "config error", "3": "tool unavailable", "4": "runtime error"},
-        "commands": ["run", "gate", "fingerprint", "mutate", "suites", "adapter", "recipe", "tools", "check", "doctor", "config", "mcp", "multi-model", "batch-attack", "generate-suffix", "test-suffix"],
+        "commands": ["scan", "fuzz", "chain", "run", "gate", "report", "controls", "recon", "morph", "diff", "use", "set", "show", "suites", "adapter", "profile", "coverage"],
         "env_vars": ["AIPO_OUTPUT_DIR", "AIPO_REPORTS_DIR", "AIPO_TRANSCRIPTS_DIR", "AIPO_LOG_LEVEL", "AIPO_SEED", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
         "safe_commands": ["aipop run --adapter mock --response-mode smart", "aipop suites list", "aipop adapter list", "aipop config show", "aipop check", "aipop doctor", "aipop --output json run --suite <name> --adapter mock", "aipop --output json gate"],
         "evidence_output": "out/evidence/*.zip",
@@ -2656,6 +2656,7 @@ def scan_cmd(
                 # Convert to RunResult for unified reporting
                 run_result = RunResult(
                     test_id=chain_result.case_id,
+                    prompt=chain_result.steps[0].prompt if chain_result.steps else "",
                     response=chain_result.final_response,
                     passed=chain_result.passed,
                     metadata={
@@ -6240,24 +6241,28 @@ def report_cmd(
         print_error(f"Summary file not found: {input_path}")
         raise typer.Exit(2)
 
+    config = {
+        "client_name": client,
+        "assessor_name": assessor,
+        "engagement_id": engagement_id,
+        "scope": scope,
+        "date_range": date_range,
+    }
+
     if format == "html":
         from aipop.reporters.executive_report import ExecutiveReport
 
         out = output or Path("out/reports/executive_report.html")
-        config = {
-            "client_name": client,
-            "assessor_name": assessor,
-            "engagement_id": engagement_id,
-            "scope": scope,
-            "date_range": date_range,
-        }
         report = ExecutiveReport()
         result = report.generate(input_path, transcripts, out, config=config)
         print_success(f"Executive HTML report generated: {result}")
 
     elif format == "md":
-        print_warning("Markdown report format is not yet implemented. Use --format html.")
-        raise typer.Exit(2)
+        from aipop.reporters.markdown_report import MarkdownReport
+        out = output or Path("out/reports/report.md")
+        report = MarkdownReport()
+        result = report.generate(input_path, transcripts, out, config=config)
+        print_success(f"Markdown report generated: {result}")
 
     else:
         print_error(f"Unknown report format: {format}. Available: html, md")
