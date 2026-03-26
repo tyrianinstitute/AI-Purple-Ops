@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from aipop import __version__
 from aipop.data import get_finding_info, load_taxonomy
+from aipop.reporters.utils import sanitize_surrogates
 from aipop.utils.errors import HarnessError
 
 
@@ -168,7 +169,7 @@ class ExecutiveReport:
 
         # Write output
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html, encoding="utf-8")
+        output_path.write_text(sanitize_surrogates(html), encoding="utf-8")
         return output_path
 
     # ------------------------------------------------------------------

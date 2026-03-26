@@ -8,6 +8,7 @@ from junit_xml import TestCase as JUnitTestCase
 from junit_xml import TestSuite, to_xml_report_file
 
 from aipop.core.models import RunResult
+from aipop.reporters.utils import sanitize_surrogates
 
 
 class JUnitReporter:
@@ -74,7 +75,7 @@ class JUnitReporter:
                 name=result.test_id,
                 classname=classname,
                 elapsed_sec=elapsed_sec,
-                stdout=result.response,
+                stdout=sanitize_surrogates(result.response),
             )
 
             # Add failure if test didn't pass
@@ -106,8 +107,8 @@ class JUnitReporter:
                     failure_message = f"Expected {expected} behavior not observed"
 
                 test_case.add_failure_info(
-                    message=failure_message,
-                    output=failure_output,
+                    message=sanitize_surrogates(failure_message),
+                    output=sanitize_surrogates(failure_output),
                 )
 
             junit_cases.append(test_case)

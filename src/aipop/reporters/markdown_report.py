@@ -9,6 +9,7 @@ from typing import Any
 
 from aipop import __version__
 from aipop.data import get_finding_info, load_taxonomy
+from aipop.reporters.utils import sanitize_surrogates
 from aipop.utils.errors import HarnessError
 
 
@@ -39,7 +40,7 @@ class MarkdownReport:
         md = self._render(summary, taxonomy, config)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(md, encoding="utf-8")
+        output_path.write_text(sanitize_surrogates(md), encoding="utf-8")
         return output_path
 
     def _render(

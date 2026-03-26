@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from aipop.reporters.cvss_cwe_taxonomy import VULNERABILITY_TAXONOMY, VulnerabilityClassifier
+from aipop.reporters.utils import sanitize_surrogates
 
 
 def export_ghostwriter_csv(summary_path: str | Path, output_path: str | Path) -> Path:
@@ -75,7 +76,7 @@ def export_ghostwriter_csv(summary_path: str | Path, output_path: str | Path) ->
 
         # Replication steps from test case
         prompt = result.get("metadata", {}).get("prompt", meta.get("technique", ""))
-        response_preview = (result.get("response", ""))[:200]
+        response_preview = sanitize_surrogates(result.get("response", ""))[:200]
         replication = f"Prompt: {prompt}\nResponse: {response_preview}" if prompt else ""
 
         references = "\n".join(filter(None, [cwe, owasp, mitre]))
@@ -154,7 +155,7 @@ def export_dradis_csv(summary_path: str | Path, output_path: str | Path) -> Path
             "CWE": taxonomy.get("cwe_id", ""),
             "CVSS": cvss.vector_string if cvss else "",
             "OWASP": taxonomy.get("owasp_llm", taxonomy.get("owasp_agentic", "")),
-            "Evidence": result.get("response", "")[:300],
+            "Evidence": sanitize_surrogates(result.get("response", ""))[:300],
             "Node": data.get("model", data.get("adapter", "target")),
         })
 

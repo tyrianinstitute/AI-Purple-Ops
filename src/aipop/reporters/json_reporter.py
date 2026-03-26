@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from aipop.core.models import RunResult
+from aipop.reporters.utils import sanitize_surrogates
 
 
 class JSONReporter:
@@ -56,9 +57,13 @@ class JSONReporter:
 
         summary = self._build_summary(self._results)
 
-        # Write pretty-printed JSON for human readability
+        # Write pretty-printed JSON for human readability.
+        # Sanitize surrogates that may come from unicode smuggling payloads —
+        # they are valid in Python str but cannot be encoded to UTF-8.
+        json_text = json.dumps(summary, indent=2, ensure_ascii=False)
+        json_text = sanitize_surrogates(json_text)
         with self._file_path.open("w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
+            f.write(json_text)
 
     def write_summary(self, results: list[RunResult], path: str) -> None:
         """Convenience method: write all results at once.

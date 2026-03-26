@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from aipop.core.gates import GateResult
+from aipop.reporters.utils import sanitize_surrogates
 from aipop.utils.errors import HarnessError
 
 
@@ -233,7 +234,7 @@ class EvidencePackGenerator:
                 file_hashes[arc_name] = _hash_bytes(content)
 
             def _add_str(zipf: zipfile.ZipFile, arc_name: str, content: str) -> None:
-                data = content.encode("utf-8")
+                data = sanitize_surrogates(content).encode("utf-8")
                 check_size(len(data))
                 zipf.writestr(arc_name, data)
                 file_hashes[arc_name] = _hash_bytes(data)

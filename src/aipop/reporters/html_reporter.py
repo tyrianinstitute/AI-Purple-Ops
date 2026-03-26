@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aipop.core.models import RunResult
+from aipop.reporters.utils import sanitize_surrogates
 from aipop.utils.errors import HarnessError
 
 
@@ -79,7 +80,7 @@ class HTMLReporter:
             tool_findings=tool_findings,
         )
 
-        output_path.write_text(html_content, encoding="utf-8")
+        output_path.write_text(sanitize_surrogates(html_content), encoding="utf-8")
 
     def _generate_html(
         self,

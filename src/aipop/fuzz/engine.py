@@ -273,8 +273,19 @@ def run_fuzz(
             leaked = []
             if leak_markers:
                 for m in leak_markers:
-                    if m.lower() in reply_text.lower():
-                        leaked.append(m)
+                    idx = reply_text.lower().find(m.lower())
+                    if idx >= 0:
+                        # Extract the matched content + surrounding context
+                        end = min(idx + len(m) + 80, len(reply_text))
+                        # If marker looks like an opener (ends with { or =), grab until closing delimiter
+                        snippet = reply_text[idx:end]
+                        if m.endswith("{"):
+                            close = snippet.find("}")
+                            if close >= 0:
+                                snippet = snippet[:close + 1]
+                        elif "\n" in snippet:
+                            snippet = snippet[:snippet.index("\n")]
+                        leaked.append(snippet.strip())
             if leak_regexes:
                 for pat in leak_regexes:
                     matches = re.findall(pat, reply_text, re.IGNORECASE)
@@ -577,8 +588,17 @@ class FuzzCampaign:
                 # 5. Check for leaks
                 leaked = []
                 for m in self.leak_markers:
-                    if m.lower() in reply_text.lower():
-                        leaked.append(m)
+                    idx = reply_text.lower().find(m.lower())
+                    if idx >= 0:
+                        end = min(idx + len(m) + 80, len(reply_text))
+                        snippet = reply_text[idx:end]
+                        if m.endswith("{"):
+                            close = snippet.find("}")
+                            if close >= 0:
+                                snippet = snippet[:close + 1]
+                        elif "\n" in snippet:
+                            snippet = snippet[:snippet.index("\n")]
+                        leaked.append(snippet.strip())
                 for pat in self.leak_regexes:
                     matches = re.findall(pat, reply_text, re.IGNORECASE)
                     leaked.extend(matches[:3])
