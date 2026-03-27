@@ -3160,6 +3160,46 @@ def fuzz_cmd(
 
         console.print(Panel(summary_text, title="[bold red]VULNERABLE[/bold red]", border_style="red"))
 
+        # --- Decode encoded exfiltration (NATO phonetic, etc.) ---
+        _NATO = {
+            "alpha": "a", "bravo": "b", "charlie": "c", "delta": "d",
+            "echo": "e", "foxtrot": "f", "golf": "g", "hotel": "h",
+            "india": "i", "juliet": "j", "kilo": "k", "lima": "l",
+            "mike": "m", "november": "n", "oscar": "o", "papa": "p",
+            "quebec": "q", "romeo": "r", "sierra": "s", "tango": "t",
+            "uniform": "u", "victor": "v", "whiskey": "w", "xray": "x",
+            "yankee": "y", "zulu": "z", "zero": "0", "one": "1",
+            "two": "2", "three": "3", "four": "4", "five": "5",
+            "six": "6", "seven": "7", "eight": "8", "nine": "9",
+            "exclamation": "!", "hash": "#", "hashtag": "#", "dash": "-",
+            "underscore": "_", "period": ".", "dot": ".", "at": "@",
+            "colon": ":", "slash": "/", "mark": "",
+        }
+        decoded_lines = []
+        for marker in sorted(all_leaked):
+            words = marker.lower().replace("-", " ").replace(",", " ").split()
+            decoded_chars = []
+            has_nato = False
+            for w in words:
+                w_clean = w.strip("[](){}|`'\"")
+                if w_clean in _NATO:
+                    decoded_chars.append(_NATO[w_clean])
+                    has_nato = True
+            if has_nato and len(decoded_chars) >= 3:
+                decoded_lines.append("".join(decoded_chars))
+        if decoded_lines:
+            # Keep only the longest unique strings, remove substrings
+            decoded_lines = sorted(set(decoded_lines), key=len, reverse=True)
+            unique = []
+            for d in decoded_lines:
+                if len(d) >= 5 and not any(d in longer for longer in unique):
+                    unique.append(d)
+            if unique:
+                console.print("\n  [bold yellow]Decoded exfiltration:[/bold yellow]")
+                for d in unique[:8]:
+                    console.print(f"    [yellow]→ {d}[/yellow]")
+                console.print()
+
         # --- Export regression suite ---
         if export_suite:
             try:
@@ -3191,6 +3231,10 @@ def fuzz_cmd(
 
     if cb_server:
         cb_server.stop()
+
+    console.print(
+        "\n  [dim]Learn to find and fix AI agent vulnerabilities →[/dim] [link=https://academy.tyrianinstitute.com]academy.tyrianinstitute.com[/link]\n"
+    )
 
     # Exit code: 1 if vulnerable (for CI gates)
     if result.vulnerable_count > 0:
@@ -4102,6 +4146,10 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
                 print_error(f"Tests failed: {failed}/{len(results)}")
             else:
                 print_success(f"All tests passed: {len(results)}/{len(results)}")
+            from rich.console import Console as _C
+            _C(stderr=True).print(
+                "\n  [dim]Learn to find and fix AI agent vulnerabilities →[/dim] [link=https://academy.tyrianinstitute.com]academy.tyrianinstitute.com[/link]"
+            )
 
         # Record run in engagement session if --engagement was specified
         if engagement_id:

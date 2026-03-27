@@ -73,6 +73,7 @@ data/fixtures/**
 
 # Recordings (keep branding ones, ignore temp)
 *.gif
+!branding/*.gif
 # Allow cast files in branding/ (committed for README demo)
 # Ignore cast files everywhere else
 
