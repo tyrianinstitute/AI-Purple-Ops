@@ -116,7 +116,7 @@ def build_dashboard(stats: FuzzStats) -> Panel:
 
     # Header
     lines.append(f"[bold]target:[/]    {stats.target}")
-    lines.append(f"[bold]runtime:[/]   {stats.runtime}          [bold]payloads/sec:[/] {stats.rate:.1f}")
+    lines.append(f"[bold]runtime:[/]   {stats.runtime}          [bold]attempts/sec:[/] {stats.rate:.1f}")
     lines.append("")
 
     # Progress bars
