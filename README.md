@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="branding/demo-3guard-bypass.gif" width="800" alt="aipop bypasses 3 active guardrails via authority framing + NATO phonetic encoding">
+  <img src="branding/demo-3guard-bypass.svg" width="800" alt="aipop fuzz — live dashboard bypassing 3 guardrails with morphed payloads">
 </p>
 
 <p align="center">
@@ -68,12 +68,12 @@ phase 3/4 — guardrail detection
 
 phase 4/4 — attack surface
   ╭──────────────────────────────────────────────╮
-  │  SURFACE      DETECTED    CONFIDENCE          │
-  │  RAG          yes         probable (70%)       │
-  │  memory       yes         verified             │
-  │  tools        3 claimed   unverified           │
-  │  input guard  yes         certain              │
-  │  output DLP   yes         certain              │
+  │  SURFACE      DETECTED    CONFIDENCE         │
+  │  RAG          yes         probable (70%)     │
+  │  memory       yes         verified           │
+  │  tools        3 claimed   unverified         │
+  │  input guard  yes         certain            │
+  │  output DLP   yes         certain            │
   ╰──────────────────────────────────────────────╯
 ```
 
@@ -156,7 +156,7 @@ aipop diff before.json after.json   # run-to-run comparison
 
 ## Docs
 
-Full documentation: [academy.tyrianinstitute.com](https://academy.tyrianinstitute.com)
+Learn more: [academy.tyrianinstitute.com](https://academy.tyrianinstitute.com)
 
 ## License
 
