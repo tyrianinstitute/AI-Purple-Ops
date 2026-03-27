@@ -3173,8 +3173,19 @@ def fuzz_cmd(
             h, t = payload_hits[result.best_payload]
             summary_text += f" ({h}/{t} strategies)"
 
+        # Deduplicate and clean leaked markers for display
+        clean_leaked = []
+        for marker in sorted(all_leaked, key=len, reverse=True):
+            # Skip REDACTED-only entries
+            if marker.strip().startswith("REDACTED") or marker.strip().startswith("[REDACTED"):
+                continue
+            # Skip if it's a substring of something already shown
+            if any(marker in existing for existing in clean_leaked):
+                continue
+            clean_leaked.append(marker)
+
         summary_text += "\n\n[bold]Exfiltrated data:[/bold]\n"
-        for marker in sorted(all_leaked):
+        for marker in clean_leaked[:10]:
             summary_text += f"  [red]▸ {marker}[/red]\n"
 
         if cb_url:

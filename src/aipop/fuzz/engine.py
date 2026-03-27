@@ -275,9 +275,7 @@ def run_fuzz(
                 for m in leak_markers:
                     idx = reply_text.lower().find(m.lower())
                     if idx >= 0:
-                        # Extract the matched content + surrounding context
                         end = min(idx + len(m) + 80, len(reply_text))
-                        # If marker looks like an opener (ends with { or =), grab until closing delimiter
                         snippet = reply_text[idx:end]
                         if m.endswith("{"):
                             close = snippet.find("}")
@@ -285,7 +283,13 @@ def run_fuzz(
                                 snippet = snippet[:close + 1]
                         elif "\n" in snippet:
                             snippet = snippet[:snippet.index("\n")]
-                        leaked.append(snippet.strip())
+                        snippet = snippet.strip()
+                        # Skip if DLP caught it (not a real leak)
+                        if "REDACTED" in snippet and len(snippet) < 40:
+                            continue
+                        # Skip duplicates
+                        if snippet and snippet not in leaked:
+                            leaked.append(snippet)
             if leak_regexes:
                 for pat in leak_regexes:
                     matches = re.findall(pat, reply_text, re.IGNORECASE)
@@ -598,7 +602,11 @@ class FuzzCampaign:
                                 snippet = snippet[:close + 1]
                         elif "\n" in snippet:
                             snippet = snippet[:snippet.index("\n")]
-                        leaked.append(snippet.strip())
+                        snippet = snippet.strip()
+                        if "REDACTED" in snippet and len(snippet) < 40:
+                            continue
+                        if snippet and snippet not in leaked:
+                            leaked.append(snippet)
                 for pat in self.leak_regexes:
                     matches = re.findall(pat, reply_text, re.IGNORECASE)
                     leaked.extend(matches[:3])
