@@ -146,7 +146,7 @@ adapters/*.yml
 
 # Large generated assets (SVGs rendered from cast files)
 *.svg
-!branding/logo-*.svg
+!branding/*.svg
 
 # Temp fuzz artifacts
 poison*.pdf
