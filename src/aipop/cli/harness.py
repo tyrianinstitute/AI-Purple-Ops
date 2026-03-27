@@ -3017,24 +3017,38 @@ def fuzz_cmd(
     # --- Live output — only show hits ---
     clean_count = [0]  # mutable for closure
 
-    def on_attempt(a):
-        morph_label = f" [dim]morph={a.morph_strategy}[/dim]" if a.morph_strategy else ""
-        if a.vulnerable:
-            console.print(f"  [bold white on red] VULN [/bold white on red]  #{a.index}  [bold]{a.strategy}[/bold]{morph_label}")
-            console.print(f"           [dim]payload: {a.payload[:80]}[/dim]")
-            if a.morphed_payload and a.morphed_payload != a.payload:
-                console.print(f"           [dim]morphed: {a.morphed_payload[:80]}[/dim]")
-            for m in a.leaked_markers[:5]:
-                console.print(f"           [bold red]▸ {m}[/bold red]")
-            console.print()
-        elif a.error:
-            console.print(f"  [yellow]ERROR[/yellow]  #{a.index}  {a.error[:60]}")
-        else:
-            clean_count[0] += 1
-            if clean_count[0] % 5 == 0 or a.index == 1:
-                console.print(f"  [dim]  ...  #{a.index}  {a.strategy}{morph_label}  clean[/dim]")
+    # --- Live dashboard setup ---
+    from aipop.fuzz.dashboard import FuzzStats, LiveDashboard, build_dashboard
 
-    # --- Run the fuzzer ---
+    # Calculate total planned attempts
+    if morph_list:
+        _total = len(payload_list) * len(morph_list) * len(strategy_list)
+    else:
+        if mode == "cluster_bomb":
+            _total = len(payload_list) * len(strategy_list)
+        else:
+            _total = max(len(payload_list), len(strategy_list))
+    if max_attempts:
+        _total = min(_total, max_attempts)
+
+    fuzz_stats = FuzzStats(
+        total_planned=_total,
+        target=target,
+        callback_url=cb_url or "",
+    )
+
+    _dashboard = [None]  # mutable ref for the callback
+
+    def on_attempt(a):
+        fuzz_stats.record_attempt(a)
+        if _dashboard[0]:
+            _dashboard[0].update()
+
+    # --- Run the fuzzer with live dashboard ---
+    _live_dash = LiveDashboard(fuzz_stats, console=console)
+    _dashboard[0] = _live_dash
+    _live_dash.__enter__()
+
     if morph_list:
         # Morph campaign — FuzzCampaign with iteration engine
         campaign = FuzzCampaign(
@@ -3076,6 +3090,14 @@ def fuzz_cmd(
             callback_url=cb_url,
             on_attempt=on_attempt,
         )
+
+    # Close the live dashboard
+    _live_dash.__exit__(None, None, None)
+
+    # Print final dashboard state as static output
+    console.print()
+    console.print(build_dashboard(fuzz_stats))
+    console.print()
 
     # --- Results table ---
     console.print()
