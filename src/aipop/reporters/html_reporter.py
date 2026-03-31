@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape as h
 from pathlib import Path
 from typing import Any
 
@@ -344,21 +345,21 @@ class HTMLReporter:
             <h2>🔍 Redteam Tool Findings</h2>
 """
             for finding in tool_findings:
-                severity = finding.get("severity", "medium")
-                remediation = finding.get("remediation", "Review and harden model defenses.")
+                severity = h(finding.get("severity", "medium"))
+                remediation = h(finding.get("remediation", "Review and harden model defenses."))
                 html += f"""
             <div class="finding {severity}">
                 <div class="finding-header">
-                    <div class="finding-title">{finding.get("attack_vector", "Unknown Attack")}</div>
+                    <div class="finding-title">{h(finding.get("attack_vector", "Unknown Attack"))}</div>
                     <span class="severity-badge severity-{severity}">{severity}</span>
                 </div>
-                <p><strong>Source:</strong> {finding.get("source", "unknown")}</p>
-                <p><strong>Category:</strong> {finding.get("category", "N/A")}</p>
+                <p><strong>Source:</strong> {h(finding.get("source", "unknown"))}</p>
+                <p><strong>Category:</strong> {h(finding.get("category", "N/A"))}</p>
                 <p><strong>Payload:</strong></p>
-                <div class="code-block">{finding.get("payload", "N/A")[:200]}...</div>
+                <div class="code-block">{h(finding.get("payload", "N/A")[:200])}...</div>
                 <div class="remediation">
                     <h4>💡 Remediation Guidance</h4>
-                    <div class="remediation-content">{remediation}</div>
+                    <div class="remediation-content">{h(remediation)}</div>
                 </div>
             </div>
 """
@@ -371,8 +372,8 @@ class HTMLReporter:
         for result in results:
             status_class = "passed" if result.passed else "failed"
             # RunResult has test_id, not test_case
-            test_name = result.test_id
-            test_description = result.metadata.get("description", "No description")
+            test_name = h(result.test_id)
+            test_description = h(result.metadata.get("description", "No description"))
             html += f"""
             <div class="test-result {status_class}">
                 <div class="test-name">{test_name}</div>
@@ -384,16 +385,16 @@ class HTMLReporter:
                         for violation in detector_result.violations:
                             remediation = self._get_remediation_guidance(violation)
                             html += f"""
-                <div class="finding {violation.severity}">
+                <div class="finding {h(violation.severity)}">
                     <div class="finding-header">
-                        <div class="finding-title">Policy Violation: {violation.rule_id}</div>
-                        <span class="severity-badge severity-{violation.severity}">{violation.severity}</span>
+                        <div class="finding-title">Policy Violation: {h(violation.rule_id)}</div>
+                        <span class="severity-badge severity-{h(violation.severity)}">{h(violation.severity)}</span>
                     </div>
-                    <p><strong>Rule ID:</strong> {violation.rule_id}</p>
-                    <p><strong>Description:</strong> {violation.message}</p>
+                    <p><strong>Rule ID:</strong> {h(violation.rule_id)}</p>
+                    <p><strong>Description:</strong> {h(violation.message)}</p>
                     <div class="remediation">
                         <h4>💡 Remediation Guidance</h4>
-                        <div class="remediation-content">{remediation}</div>
+                        <div class="remediation-content">{h(remediation)}</div>
                     </div>
                 </div>
 """

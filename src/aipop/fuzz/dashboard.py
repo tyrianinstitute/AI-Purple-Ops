@@ -66,6 +66,7 @@ class FuzzStats:
 
     callback_url: str = ""
     target: str = ""
+    first_attempt_time: float = 0.0
 
     @property
     def runtime(self) -> str:
@@ -75,8 +76,13 @@ class FuzzStats:
 
     @property
     def rate(self) -> float:
-        elapsed = time.time() - self.start_time
-        if elapsed < 0.1:
+        if self.tested < 2:
+            return 0.0
+        # Rate from first attempt, not from process start (excludes setup)
+        if self.first_attempt_time <= 0:
+            return 0.0
+        elapsed = time.time() - self.first_attempt_time
+        if elapsed < 0.5:
             return 0.0
         return self.tested / elapsed
 
@@ -88,6 +94,8 @@ class FuzzStats:
 
     def record_attempt(self, attempt) -> None:
         """Record a single fuzz attempt result."""
+        if self.tested == 0:
+            self.first_attempt_time = time.time()
         self.tested += 1
         strategy = getattr(attempt, "strategy", "unknown")
         self.strategy_attempts[strategy] += 1
@@ -114,56 +122,60 @@ def build_dashboard(stats: FuzzStats) -> Panel:
     """Build the Rich panel for the live dashboard."""
     lines = []
 
-    # Header
-    lines.append(f"[bold]target:[/]    {stats.target}")
-    lines.append(f"[bold]runtime:[/]   {stats.runtime}          [bold]attempts/sec:[/] {stats.rate:.1f}")
+    # Header — compact, two-column layout
+    rate_display = f"{stats.rate:.1f}" if stats.rate >= 0.1 else "<0.1"
+    lines.append(
+        f"[bold]target:[/]  {stats.target}    "
+        f"[bold]runtime:[/] {stats.runtime}    "
+        f"[bold]req/s:[/] {rate_display}"
+    )
     lines.append("")
 
-    # Progress bars
+    # Progress bars — wider, cleaner labels
     tested_pct = stats.tested / max(stats.total_planned, 1)
     bypass_pct = stats.bypassed / max(stats.tested, 1)
     blocked_pct = stats.blocked / max(stats.tested, 1)
 
-    tested_bar = _bar(tested_pct, "cyan")
+    tested_bar = _bar(tested_pct, "bold white")
     bypass_bar = _bar(bypass_pct, "red")
     blocked_bar = _bar(blocked_pct, "green")
 
-    lines.append(f"  TESTED    {tested_bar}  {stats.tested} / {stats.total_planned}")
-    lines.append(f"  BYPASSED  {bypass_bar}  {stats.bypassed} ({stats.bypass_rate:.1f}%)")
-    lines.append(f"  BLOCKED   {blocked_bar}  {stats.blocked}")
+    lines.append(f"  tested    {tested_bar}  {stats.tested}/{stats.total_planned}")
+    lines.append(f"  bypassed  {bypass_bar}  [bold red]{stats.bypassed}[/] ({stats.bypass_rate:.0f}%)")
+    lines.append(f"  blocked   {blocked_bar}  {stats.blocked}")
     if stats.errors:
-        lines.append(f"  ERRORS    {stats.errors}")
+        lines.append(f"  errors    [yellow]{stats.errors}[/]")
     lines.append("")
 
-    # Strategy effectiveness
-    if stats.strategy_attempts:
-        lines.append("[bold]MUTATION EFFECTIVENESS[/]")
+    # Strategy effectiveness — only show when there's data
+    if stats.strategy_attempts and stats.tested > 0:
+        lines.append("[bold]strategy effectiveness[/]")
         for strat in sorted(stats.strategy_attempts.keys()):
             total = stats.strategy_attempts[strat]
             bypasses = stats.strategy_bypasses.get(strat, 0)
             pct = 100 * bypasses / total if total > 0 else 0
             eff_bar = _bar(pct / 100, "red" if pct > 50 else "yellow" if pct > 10 else "dim")
-            lines.append(f"  {strat:24s} {eff_bar}  {pct:.0f}% bypass ({bypasses}/{total})")
+            lines.append(f"  {strat:20s} {eff_bar}  {pct:.0f}% ({bypasses}/{total})")
         lines.append("")
 
-    # Decoded leaks
+    # Leaked data — show both raw and decoded
     if stats.decoded_items:
-        lines.append("[bold yellow]DECODED EXFILTRATION[/]")
+        lines.append("[bold red]exfiltrated[/]")
         for d in stats.decoded_items[-6:]:
-            lines.append(f"  [yellow]→ {d}[/]")
+            lines.append(f"  [red]→ {d}[/]")
         lines.append("")
     elif stats.leaked_items:
-        lines.append("[bold red]LATEST LEAK[/]")
+        lines.append("[bold red]leaked[/]")
         lines.append(f"  [red]▸ {stats.latest_leak[:80]}[/]")
         lines.append("")
 
-    # Callback
+    # Callback — only if active
     if stats.callback_url:
-        lines.append(f"[bold]Callback:[/] {stats.callback_url}")
+        lines.append(f"[dim]callback:[/] {stats.callback_url}")
 
     return Panel(
         "\n".join(lines),
-        title="[bold cyan]aipop fuzz — LIVE[/]",
+        title="[bold cyan]aipop fuzz[/]",
         border_style="cyan",
     )
 

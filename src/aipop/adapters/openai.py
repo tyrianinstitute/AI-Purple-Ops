@@ -30,6 +30,7 @@ class OpenAIAdapter:
         max_retries: int = 3,
         rpm_limit: int = 60,
         proxy: str | None = None,
+        insecure: bool = False,
     ) -> None:
         """Initialize OpenAI adapter.
 
@@ -40,6 +41,7 @@ class OpenAIAdapter:
             max_retries: Maximum retry attempts
             rpm_limit: Requests per minute limit (default: 60)
             proxy: HTTP/SOCKS5 proxy URL (e.g., http://127.0.0.1:8080)
+            insecure: Disable TLS verification (only use for local MITM proxies)
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -53,6 +55,7 @@ class OpenAIAdapter:
         self.timeout = timeout
         self.max_retries = max_retries
         self.proxy = proxy or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+        self.insecure = insecure
         self.rate_limiter = RateLimiter(rpm=rpm_limit)
 
         # Try to import openai
@@ -64,7 +67,8 @@ class OpenAIAdapter:
             if self.proxy:
                 try:
                     import httpx
-                    http_client = httpx.Client(proxy=self.proxy, verify=False)
+                    verify_tls = not self.insecure
+                    http_client = httpx.Client(proxy=self.proxy, verify=verify_tls)
                 except ImportError:
                     pass  # httpx not available, proxy won't work
 

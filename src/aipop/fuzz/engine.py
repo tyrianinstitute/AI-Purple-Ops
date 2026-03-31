@@ -253,50 +253,66 @@ def run_fuzz(
                     )
             if resp.status_code in (200, 201):
                 attempt.uploaded = True
-                data = resp.json()
-                attempt.chunks_ingested = data.get("chunks_ingested", 0)
+                try:
+                    data = resp.json()
+                    attempt.chunks_ingested = data.get("chunks_ingested", 0)
+                except (ValueError, requests.exceptions.JSONDecodeError):
+                    pass
+            else:
+                # Upload failed with HTTP error — this is not a bypass,
+                # it's an infrastructure error. Don't trigger or check leaks.
+                attempt.error = f"Upload failed: HTTP {resp.status_code}"
 
-            # 4. Wait
-            time.sleep(wait_time)
+            # Only trigger and check for leaks if upload actually succeeded.
+            # A 404/500 on upload is NOT a bypass — counting it as one
+            # produces false "100% bypass rate" results.
+            if attempt.uploaded:
+                # 4. Wait
+                time.sleep(wait_time)
 
-            # 5. Trigger
-            resp = requests.post(
-                chat_url,
-                json={prompt_field: trigger},
-                timeout=60,
-            )
-            reply_data = resp.json()
-            reply_text = reply_data.get(response_field, str(reply_data))
-            attempt.response_text = reply_text
+                # 5. Trigger
+                resp = requests.post(
+                    chat_url,
+                    json={prompt_field: trigger},
+                    timeout=60,
+                )
 
-            # 6. Check for leaks
-            leaked = []
-            if leak_markers:
-                for m in leak_markers:
-                    idx = reply_text.lower().find(m.lower())
-                    if idx >= 0:
-                        end = min(idx + len(m) + 80, len(reply_text))
-                        snippet = reply_text[idx:end]
-                        if m.endswith("{"):
-                            close = snippet.find("}")
-                            if close >= 0:
-                                snippet = snippet[:close + 1]
-                        elif "\n" in snippet:
-                            snippet = snippet[:snippet.index("\n")]
-                        snippet = snippet.strip()
-                        # Skip if DLP caught it (not a real leak)
-                        if "REDACTED" in snippet and len(snippet) < 40:
-                            continue
-                        # Skip duplicates
-                        if snippet and snippet not in leaked:
-                            leaked.append(snippet)
-            if leak_regexes:
-                for pat in leak_regexes:
-                    matches = re.findall(pat, reply_text, re.IGNORECASE)
-                    leaked.extend(matches[:3])
+                # Trigger must also succeed — a 4xx/5xx here is an error
+                if resp.status_code >= 400:
+                    attempt.error = f"Trigger failed: HTTP {resp.status_code}"
+                else:
+                    reply_data = resp.json()
+                    reply_text = reply_data.get(response_field, str(reply_data))
+                    attempt.response_text = reply_text
 
-            attempt.leaked_markers = leaked
-            attempt.vulnerable = len(leaked) > 0
+                    # 6. Check for leaks
+                    leaked = []
+                    if leak_markers:
+                        for m in leak_markers:
+                            pos = reply_text.lower().find(m.lower())
+                            if pos >= 0:
+                                end = min(pos + len(m) + 80, len(reply_text))
+                                snippet = reply_text[pos:end]
+                                if m.endswith("{"):
+                                    close = snippet.find("}")
+                                    if close >= 0:
+                                        snippet = snippet[:close + 1]
+                                elif "\n" in snippet:
+                                    snippet = snippet[:snippet.index("\n")]
+                                snippet = snippet.strip()
+                                # Skip if DLP caught it (not a real leak)
+                                if "REDACTED" in snippet and len(snippet) < 40:
+                                    continue
+                                # Skip duplicates
+                                if snippet and snippet not in leaked:
+                                    leaked.append(snippet)
+                    if leak_regexes:
+                        for pat in leak_regexes:
+                            matches = re.findall(pat, reply_text, re.IGNORECASE)
+                            leaked.extend(matches[:3])
+
+                    attempt.leaked_markers = leaked
+                    attempt.vulnerable = len(leaked) > 0
 
             # Cleanup temp file
             try:
@@ -345,7 +361,8 @@ def run_fuzz(
             payload_hits[short] = payload_hits.get(short, 0) + 1
     best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
 
-    bypass = vuln_count / len(attempts) if attempts else 0
+    valid_count = len(attempts) - error_count
+    bypass = vuln_count / valid_count if valid_count > 0 else 0
 
     return FuzzResult(
         target=target,
@@ -573,46 +590,60 @@ class FuzzCampaign:
 
                 if resp.status_code in (200, 201):
                     attempt.uploaded = True
-                    data = resp.json()
-                    attempt.chunks_ingested = data.get("chunks_ingested", 0)
+                    try:
+                        data = resp.json()
+                        attempt.chunks_ingested = data.get("chunks_ingested", 0)
+                    except (ValueError, requests.exceptions.JSONDecodeError):
+                        pass
+                else:
+                    # Upload failed with HTTP error — not a bypass
+                    attempt.error = f"Upload failed: HTTP {resp.status_code}"
 
-                # 3. Wait for ingestion
-                time.sleep(self.wait_time)
+                # Only trigger and check for leaks if upload actually succeeded.
+                # A 404/500 on upload is NOT a bypass.
+                if attempt.uploaded:
+                    # 3. Wait for ingestion
+                    time.sleep(self.wait_time)
 
-                # 4. Trigger query
-                resp = requests.post(
-                    chat_url,
-                    json={self.prompt_field: self.trigger_prompt},
-                    timeout=60,
-                )
-                reply_data = resp.json()
-                reply_text = reply_data.get(self.response_field, str(reply_data))
-                attempt.response_text = reply_text
+                    # 4. Trigger query
+                    resp = requests.post(
+                        chat_url,
+                        json={self.prompt_field: self.trigger_prompt},
+                        timeout=60,
+                    )
 
-                # 5. Check for leaks
-                leaked = []
-                for m in self.leak_markers:
-                    idx = reply_text.lower().find(m.lower())
-                    if idx >= 0:
-                        end = min(idx + len(m) + 80, len(reply_text))
-                        snippet = reply_text[idx:end]
-                        if m.endswith("{"):
-                            close = snippet.find("}")
-                            if close >= 0:
-                                snippet = snippet[:close + 1]
-                        elif "\n" in snippet:
-                            snippet = snippet[:snippet.index("\n")]
-                        snippet = snippet.strip()
-                        if "REDACTED" in snippet and len(snippet) < 40:
-                            continue
-                        if snippet and snippet not in leaked:
-                            leaked.append(snippet)
-                for pat in self.leak_regexes:
-                    matches = re.findall(pat, reply_text, re.IGNORECASE)
-                    leaked.extend(matches[:3])
+                    # Trigger must also succeed
+                    if resp.status_code >= 400:
+                        attempt.error = f"Trigger failed: HTTP {resp.status_code}"
+                    else:
+                        reply_data = resp.json()
+                        reply_text = reply_data.get(self.response_field, str(reply_data))
+                        attempt.response_text = reply_text
 
-                attempt.leaked_markers = leaked
-                attempt.vulnerable = len(leaked) > 0
+                        # 5. Check for leaks
+                        leaked = []
+                        for m in self.leak_markers:
+                            pos = reply_text.lower().find(m.lower())
+                            if pos >= 0:
+                                end = min(pos + len(m) + 80, len(reply_text))
+                                snippet = reply_text[pos:end]
+                                if m.endswith("{"):
+                                    close = snippet.find("}")
+                                    if close >= 0:
+                                        snippet = snippet[:close + 1]
+                                elif "\n" in snippet:
+                                    snippet = snippet[:snippet.index("\n")]
+                                snippet = snippet.strip()
+                                if "REDACTED" in snippet and len(snippet) < 40:
+                                    continue
+                                if snippet and snippet not in leaked:
+                                    leaked.append(snippet)
+                        for pat in self.leak_regexes:
+                            matches = re.findall(pat, reply_text, re.IGNORECASE)
+                            leaked.extend(matches[:3])
+
+                        attempt.leaked_markers = leaked
+                        attempt.vulnerable = len(leaked) > 0
 
                 # Cleanup
                 try:
@@ -665,7 +696,8 @@ class FuzzCampaign:
                 payload_hits[short] = payload_hits.get(short, 0) + 1
         best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
 
-        bypass = vuln_count / len(attempts) if attempts else 0
+        valid_count = len(attempts) - error_count
+        bypass = vuln_count / valid_count if valid_count > 0 else 0
 
         return FuzzResult(
             target=self.target_url,

@@ -109,8 +109,15 @@ class JSONReporter:
             }
 
         total = len(results)
-        passed = sum(1 for r in results if r.passed)
-        failed = total - passed
+        # Count connection/infra errors separately — they are NOT clean results
+        errors = sum(
+            1 for r in results
+            if r.metadata.get("error_class") == "connection"
+            or r.metadata.get("error_type") in ("TimeoutError", "BudgetExceededError")
+            or (r.passed and str(r.response).startswith("ERROR:"))
+        )
+        passed = sum(1 for r in results if r.passed) - errors
+        failed = total - passed - errors
 
         # Extract metrics from metadata
         latencies: list[float] = []
@@ -231,6 +238,7 @@ class JSONReporter:
             "total": total,
             "passed": passed,
             "failed": failed,
+            "errors": errors,
             "harmful_output_rate": round(harmful_output_rate, 4),
             "tool_policy_violation_rate": round(tool_policy_violation_rate, 4),
             "utility_failure_rate": round(utility_failure_rate, 4),

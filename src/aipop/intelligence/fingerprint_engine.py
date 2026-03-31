@@ -147,7 +147,12 @@ class FingerprintEngine:
         Args:
             db_path: Path to DuckDB database (default: out/fingerprints.db)
         """
-        import duckdb
+        try:
+            import duckdb
+        except ImportError:
+            raise ImportError(
+                "Fingerprinting requires duckdb. Install with: pip install aipop[intelligence]"
+            )
 
         if db_path is None:
             db_path = Path("out/fingerprints/fingerprints.db")
@@ -163,7 +168,7 @@ class FingerprintEngine:
 
     def _initialize_schema(self) -> None:
         """Initializes database schema from SQL file."""
-        schema_path = Path(__file__).parent.parent.parent.parent / "configs" / "schemas" / "fingerprints.sql"
+        schema_path = Path(__file__).parent.parent / "configs" / "schemas" / "fingerprints.sql"
 
         if schema_path.exists():
             with open(schema_path) as f:

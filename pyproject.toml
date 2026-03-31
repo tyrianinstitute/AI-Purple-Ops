@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aipop"
-version = "0.8.2"
+version = "0.8.3"
 description = "One CLI for AI security testing. Recon, scan, fuzz, chain, gate."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,7 @@ dependencies = [
     "websocket-client>=1.8.0,<2",
     "platformdirs>=4.0,<5",
     "jinja2>=3.1,<4",
+    "fpdf2>=2.7,<3",
 ]
 keywords = ["ai", "security", "llm", "pentesting", "red-team", "prompt-injection", "rag", "fuzzing"]
 classifiers = [
@@ -160,3 +161,4 @@ packages = { find = { where = ["src"] } }
 "aipop.policies" = ["*.yaml", "*.yml"]
 "aipop.configs" = ["**/*.yaml", "**/*.yml", "**/*.json", "**/*.sql"]
 "aipop.recipes" = ["**/*.yaml", "**/*.yml"]
+"aipop.reporters" = ["templates/*.html"]

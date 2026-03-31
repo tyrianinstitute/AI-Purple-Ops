@@ -215,8 +215,9 @@ class ChainRunner:
                     chain_result.metadata["error"] = step_result.error
                     chain_result.metadata["error_class"] = "connection"
                 else:
-                    chain_result.passed = False
+                    chain_result.passed = True  # Step error ≠ vulnerability
                     chain_result.metadata["error"] = f"Step {step_result.step_id} failed: {step_result.error}"
+                    chain_result.metadata["error_class"] = "step_error"
                 break
 
         # The final step's response is what we classify
@@ -380,13 +381,22 @@ class ChainRunner:
             expected_code = expect.get("status_code")
             if expected_code and resp.status_code != expected_code:
                 status = "error"
+        elif resp.status_code >= 400:
+            # No explicit expectation set, but server returned an HTTP error.
+            # 4xx/5xx is an error, not a successful step — marking it as
+            # "success" causes chains to report VULNERABLE when the target
+            # is just broken or rejecting the request.
+            status = "error"
 
-        return StepResult(
+        result = StepResult(
             step_id=step_id, action="http_request", status=status,
             status_code=resp.status_code, response_body=resp_body,
             response_text=resp_text, duration_ms=elapsed,
             extracted=extracted,
         )
+        if status == "error" and not expect:
+            result.error = f"HTTP {resp.status_code}"
+        return result
 
     def _step_wait(self, step_id: str, step_def: dict[str, Any], ctx: ChainContext) -> StepResult:
         """Wait for a fixed duration."""

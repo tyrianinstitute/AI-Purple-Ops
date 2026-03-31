@@ -252,12 +252,21 @@ def scan_summary(
     cost_usd: float = 0.0,
     is_static: bool = False,
     console: Console | None = None,
+    errors: int = 0,
 ) -> None:
     """Display end-of-scan summary panel."""
     console = console or Console(stderr=True)
 
     if is_static:
         status = "[yellow]STATIC COMPLETE[/]"
+        border = "yellow"
+    elif errors > 0 and passed == 0 and failed == 0:
+        # ALL results were errors — target is unreachable or misconfigured
+        status = "[bold yellow]ERROR — target unreachable[/]"
+        border = "yellow"
+    elif errors > 0 and failed == 0:
+        # Some errors, some passes, no failures — inconclusive
+        status = "[bold yellow]INCONCLUSIVE — {errors} errors[/]"
         border = "yellow"
     elif failed > 0:
         status = "[bold red]VULNERABLE[/]"
@@ -274,11 +283,22 @@ def scan_summary(
     else:
         target_display = model_name
 
+    test_summary = f"{total} ({passed} passed, {failed} failed"
+    if errors > 0:
+        test_summary += f", [yellow]{errors} errors[/]"
+    test_summary += ")"
+
     lines = [
         f"[bold]status:[/]  {status}",
         f"[bold]target:[/]  {target_display}",
-        f"[bold]tests:[/]   {total} ({passed} passed, {failed} failed)",
+        f"[bold]tests:[/]   {test_summary}",
     ]
+
+    if errors > 0 and passed == 0:
+        lines.append("")
+        lines.append("[yellow]all tests returned connection errors — the target may be down,[/]")
+        lines.append("[yellow]misconfigured, or using different API field names.[/]")
+        lines.append("[yellow]try: aipop scan <url> --prompt-field message --response-field reply[/]")
 
     if elapsed_secs > 0:
         lines.append(f"[bold]time:[/]    {elapsed_secs:.1f}s")

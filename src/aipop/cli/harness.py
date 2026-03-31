@@ -934,6 +934,25 @@ def _create_adapter_from_cli(
         "ollama": OllamaAdapter,
     }
 
+    # Optional adapters — only registered when their deps are installed
+    try:
+        from aipop.adapters.bedrock import BedrockAdapter
+        adapter_map["bedrock"] = BedrockAdapter
+    except ImportError:
+        pass
+
+    try:
+        from aipop.adapters.llamacpp import LlamaCppAdapter
+        adapter_map["llamacpp"] = LlamaCppAdapter
+    except ImportError:
+        pass
+
+    try:
+        from aipop.adapters.mcp import MCPAdapter
+        adapter_map["mcp"] = MCPAdapter
+    except ImportError:
+        pass
+
     if adapter_name not in adapter_map:
         # Check for YAML-defined custom HTTP adapter
         from aipop.utils.adapter_paths import adapter_spec_path
@@ -1712,7 +1731,7 @@ def generate_suffix_cmd(
                 "metadata": {
                     "timestamp": datetime.now().isoformat(),
                     "tool": "aipurpleops",
-                    "version": "0.1.0",
+                    "version": __version__,
                     "method": method,
                     "implementation": implementation,
                     "mode": mode,
@@ -1766,13 +1785,15 @@ def generate_suffix_cmd(
                         )
                 print_success(f"Saved CSV to {csv_path}")
             except Exception as e:
-                logger.warning(f"Failed to save CSV: {e}")
+                log.warn(f"Failed to save CSV: {e}")
 
         # Test suffixes after generation if requested
         if test_after_generate:
             if not adapter_instance:
                 print_warning("--test-after-generate requires --adapter. Skipping testing.")
             else:
+                from aipop.intelligence.adversarial_suffix import AdversarialSuffixGenerator
+                generator = AdversarialSuffixGenerator()
                 adapter_display = adapter or "unknown"
                 model_display = adapter_model or "unknown"
                 print_info(
@@ -2535,6 +2556,7 @@ def scan_cmd(
         completed = 0
         passed_count = 0
         failed_count = 0
+        error_count = 0
 
         # Progress bar setup — only count single-step cases here;
         # multi-step cases manage their own progress updates
@@ -2550,11 +2572,19 @@ def scan_cmd(
             _progress_task = _progress_ctx.add_task("scanning", total=_total_cases)
 
         def _on_result(r) -> None:
-            nonlocal completed, passed_count, failed_count
+            nonlocal completed, passed_count, failed_count, error_count
             from aipop.core.verbosity import is_verbose, is_trace
 
             completed += 1
-            if r.passed:
+            # Connection/infra errors are NOT clean — count separately
+            is_error = (
+                r.metadata.get("error_class") == "connection"
+                or r.metadata.get("error_type") in ("TimeoutError", "BudgetExceededError")
+                or (r.passed and str(r.response).startswith("ERROR:"))
+            )
+            if is_error:
+                error_count += 1
+            elif r.passed:
                 passed_count += 1
             else:
                 failed_count += 1
@@ -2639,7 +2669,17 @@ def scan_cmd(
         if multi_cases:
             from aipop.runners.chain import ChainRunner
             from aipop.core.models import RunResult
-            chain_target = target or getattr(adapter, "base_url", "")
+            # Extract just scheme + host + port for the chain base URL.
+            # target may include a path (e.g. http://localhost:9000/chat) but
+            # chain steps define their own endpoint paths — passing the full
+            # URL as base_url causes path duplication and port fallback bugs.
+            _raw_chain_target = target or getattr(adapter, "base_url", "")
+            if _raw_chain_target:
+                from urllib.parse import urlparse as _urlparse
+                _parsed = _urlparse(_raw_chain_target)
+                chain_target = f"{_parsed.scheme}://{_parsed.netloc}"
+            else:
+                chain_target = _raw_chain_target
             chain_runner = ChainRunner(base_url=chain_target, timeout=30)
 
             for tc in multi_cases:
@@ -2675,9 +2715,17 @@ def scan_cmd(
             _progress_ctx.stop()
 
         # Recount totals (includes both single-step and multi-step results)
+        # Connection/infra errors are NOT clean — count separately
         scan_result.total = len(scan_result.results)
-        scan_result.passed = sum(1 for r in scan_result.results if r.passed)
-        scan_result.failed = scan_result.total - scan_result.passed
+        _err_count = sum(
+            1 for r in scan_result.results
+            if r.metadata.get("error_class") == "connection"
+            or r.metadata.get("error_type") in ("TimeoutError", "BudgetExceededError")
+            or (r.passed and str(r.response).startswith("ERROR:"))
+        )
+        scan_result.passed = sum(1 for r in scan_result.results if r.passed) - _err_count
+        scan_result.failed = scan_result.total - scan_result.passed - _err_count
+        scan_result.metadata["errors"] = _err_count
 
         elapsed = _time.time() - scan_start
 
@@ -2748,6 +2796,7 @@ def scan_cmd(
                 cost_usd=total_cost,
                 is_static=is_static,
                 console=console,
+                errors=scan_result.metadata.get("errors", 0),
             )
 
     except typer.Exit:
@@ -2990,28 +3039,17 @@ def fuzz_cmd(
     if max_attempts:
         total_combos = min(total_combos, max_attempts)
 
-    header_lines = (
-        f"[bold]target:[/bold]     {target}\n"
-        f"[bold]payloads:[/bold]   {len(payload_list)} ({'builtin' if payloads and payloads.startswith('builtin') else 'custom'})\n"
-        f"[bold]strategies:[/bold] {', '.join(strategy_list)}\n"
-    )
+    # Compact config line — no separate panel, just a dim summary
+    config_parts = [
+        f"{len(payload_list)} payload{'s' if len(payload_list) != 1 else ''}",
+        f"{', '.join(strategy_list)}",
+    ]
     if morph_list:
-        header_lines += f"[bold]morph:[/bold]      {len(morph_list)} strategies\n"
-    header_lines += (
-        f"[bold]mode:[/bold]       {mode}\n"
-        f"[bold]attempts:[/bold]   {total_combos}\n"
-        f"[bold]callback:[/bold]   {cb_url or 'none'}"
-    )
-    if morph_list:
-        header_lines += (
-            "\n[bold yellow]WARNING:[/bold yellow] KB pollution accumulates — "
-            "each attempt adds a poisoned document."
-        )
-    console.print(Panel(
-        header_lines,
-        title="[bold cyan]aipop fuzz[/bold cyan]",
-        border_style="cyan",
-    ))
+        config_parts.append(f"{len(morph_list)} morph")
+    config_parts.append(f"{total_combos} attempts")
+    if cb_url:
+        config_parts.append(f"callback {cb_url}")
+    console.print(f"  [dim]{' · '.join(config_parts)}[/dim]")
     console.print()
 
     # --- Live output — only show hits ---
@@ -3093,13 +3131,6 @@ def fuzz_cmd(
 
     # Close the live dashboard
     _live_dash.__exit__(None, None, None)
-
-    # Print final dashboard state as static output
-    console.print()
-    console.print(build_dashboard(fuzz_stats))
-    console.print()
-
-    # --- Results table ---
     console.print()
 
     if result.vulnerable_count > 0:
@@ -3153,22 +3184,14 @@ def fuzz_cmd(
             payload_hits[short] = (hits + (1 if a.vulnerable else 0), total + 1)
 
         summary_text = (
-            f"[bold]Attempts:[/bold]  {result.total_attempts}"
-        )
-        if morph_list:
-            summary_text += (
-                f" ({len(payload_list)} payload{'s' if len(payload_list) != 1 else ''}"
-                f" x {len(morph_list)} morph strategies)"
-            )
-        summary_text += (
-            f"\n[bold red]Vulnerable:[/bold red] {result.vulnerable_count}/{result.total_attempts} "
-            f"({result.bypass_rate:.0%} bypass rate)\n"
-            f"[bold]Best strategy:[/bold]  {result.best_strategy or 'n/a'}"
+            f"[bold red]{result.vulnerable_count}/{result.total_attempts}[/bold red] bypassed"
+            f"  ({result.bypass_rate:.0%} bypass rate)\n"
+            f"[bold]best strategy:[/bold]  {result.best_strategy or 'n/a'}"
         )
         if result.best_strategy and result.best_strategy in strategy_hits:
             h, t = strategy_hits[result.best_strategy]
-            summary_text += f" ({h}/{t} hits)"
-        summary_text += f"\n[bold]Best payload:[/bold]   {result.best_payload or 'n/a'}"
+            summary_text += f" ({h}/{t})"
+        summary_text += f"\n[bold]best payload:[/bold]   {result.best_payload or 'n/a'}"
         if result.best_payload and result.best_payload in payload_hits:
             h, t = payload_hits[result.best_payload]
             summary_text += f" ({h}/{t} strategies)"
@@ -4047,7 +4070,7 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
                 )
 
                 # Show judge limitations warning (especially for KeywordJudge)
-                if judge_name == "keyword":
+                if judge == "keyword":
                     console.print("\n[yellow]⚠️  KeywordJudge Limitations:[/yellow]")
                     console.print(
                         '[yellow]   - May miss subtle jailbreaks (base64, code-only, "I shouldn\'t but...")[/yellow]'
@@ -4093,8 +4116,8 @@ ASR: {asr_summary['asr']:.1%} ± {(ci_upper - ci_lower) / 2:.1%} (95% CI: [{ci_l
                 console.print(table)
 
             # Budget warning
-            if budget:
-                cost_tracker.warn_if_over_budget(budget)
+            if budget and cost_summary["total_cost"] > budget:
+                print_warning(f"Budget exceeded: ${cost_summary['total_cost']:.4f} > ${budget:.4f}")
 
         # Debug output if orchestrator debug is enabled
         if orchestrator and hasattr(orchestrator, "get_debug_info"):
@@ -6392,6 +6415,7 @@ def import_payloads_cmd(
 @app.command("discover", rich_help_panel="Diagnostics")
 def discover_cmd(
     ctx: typer.Context,
+    target: str = typer.Argument(None, help="Target URL to probe (e.g., http://localhost:8000)"),
     adapter_name: str = typer.Option("mock", "--adapter", "-a", help="Adapter to probe"),
     model_name: str | None = typer.Option(None, "--model", "-m", help="Model name"),
     response_mode: str = typer.Option("smart", "--response-mode", help="Mock response mode"),
@@ -6399,6 +6423,7 @@ def discover_cmd(
     """Probe a target to discover its attack surface and recommend suites.
 
     Examples:
+        aipop discover http://localhost:8000
         aipop discover --adapter openai --model gpt-4o
         aipop discover --adapter mock
     """

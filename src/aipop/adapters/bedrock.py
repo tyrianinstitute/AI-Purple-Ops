@@ -88,12 +88,11 @@ class BedrockAdapter:
                     "temperature": kwargs.get("temperature", 0.7),
                 }
 
+                import json
                 response = self.client.invoke_model(
                     modelId=self.model,
-                    body=bytes(str(body).replace("'", '"'), "utf-8"),
+                    body=json.dumps(body).encode("utf-8"),
                 )
-
-                import json
 
                 response_body = json.loads(response["body"].read())
                 text = response_body.get("completion", "")
@@ -102,12 +101,11 @@ class BedrockAdapter:
                 # Generic format for other models
                 body = {"inputText": prompt, **kwargs}
 
+                import json
                 response = self.client.invoke_model(
                     modelId=self.model,
-                    body=bytes(str(body).replace("'", '"'), "utf-8"),
+                    body=json.dumps(body).encode("utf-8"),
                 )
-
-                import json
 
                 response_body = json.loads(response["body"].read())
                 text = response_body.get("results", [{}])[0].get("outputText", "")

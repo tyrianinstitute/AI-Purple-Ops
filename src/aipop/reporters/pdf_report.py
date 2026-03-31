@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from html import escape as h
 from pathlib import Path
 from typing import Any
 
@@ -144,11 +145,11 @@ def _build_report_html(data: dict[str, Any]) -> str:
         description = taxonomy.get("description", f"{category} vulnerability detected")
 
         html_parts.append(f"""
-<div class="finding {risk}">
-    <h3><span class="severity {risk}">[{risk.upper()}]</span> {category.replace('_', ' ').title()}</h3>
-    <p><strong>Instances:</strong> {len(results)} | <strong>CWE:</strong> {cwe} | <strong>OWASP:</strong> {owasp}</p>
-    <p><strong>Description:</strong> {description}</p>
-    <p><strong>Remediation:</strong> {remediation}</p>
+<div class="finding {h(risk)}">
+    <h3><span class="severity {h(risk)}">[{h(risk.upper())}]</span> {h(category.replace('_', ' ').title())}</h3>
+    <p><strong>Instances:</strong> {len(results)} | <strong>CWE:</strong> {h(cwe)} | <strong>OWASP:</strong> {h(owasp)}</p>
+    <p><strong>Description:</strong> {h(description)}</p>
+    <p><strong>Remediation:</strong> {h(remediation)}</p>
 </div>""")
 
     # Framework coverage

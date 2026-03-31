@@ -10,6 +10,8 @@ from typing import Any, Literal
 from rich.console import Console
 from rich.table import Table
 
+from aipop.reporters.utils import sanitize_surrogates
+
 
 def generate_cli_vuln_report(
     summary_json_path: Path,
@@ -47,7 +49,7 @@ def generate_cli_vuln_report(
                 "severity": meta.get("risk", "unknown").upper(),
                 "category": meta.get("category", "unknown"),
                 "description": description,
-                "response": result.get("response", "")[:200],  # Truncate
+                "response": sanitize_surrogates(result.get("response", ""))[:200],  # Truncate
                 "multi_turn": meta.get("multi_turn", False),
             }
             vulnerabilities.append(vuln)
