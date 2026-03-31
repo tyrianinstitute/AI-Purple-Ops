@@ -45,6 +45,16 @@ class TestCase:
     # TODO(b07): Add attack_type field for redteam
 
 
+class Verdict:
+    """Test outcome states. Refusal is NOT pass. Error is NOT vulnerability."""
+
+    VULNERABLE = "vulnerable"    # Attack succeeded — real finding
+    BLOCKED = "blocked"          # A deployed control stopped the attack
+    REFUSED = "refused"          # Model alignment refused, no deployed control involved
+    INCONCLUSIVE = "inconclusive"  # Could not determine — timeout, parse error, ambiguous
+    ERROR = "error"              # Infrastructure failure — connection, adapter, config
+
+
 @dataclass
 class RunResult:
     """Single test execution result."""
@@ -52,6 +62,12 @@ class RunResult:
     test_id: str
     prompt: str  # The prompt sent to the target — evidence for reports
     response: str
-    passed: bool
+    passed: bool  # Kept for backward compat — derived from verdict
     metadata: dict[str, Any]
     detector_results: list[DetectorResult] | None = None  # Policy violation results
+    verdict: str = ""  # One of Verdict.* — empty means legacy result
+
+    def __post_init__(self) -> None:
+        # If verdict not set, derive from passed for backward compat
+        if not self.verdict:
+            self.verdict = Verdict.BLOCKED if self.passed else Verdict.VULNERABLE
