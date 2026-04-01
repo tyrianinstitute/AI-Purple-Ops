@@ -2080,9 +2080,10 @@ def verify_suite_cmd(
 @app.command("recon", rich_help_panel="Diagnostics")
 def recon_cmd(
     ctx: typer.Context,
+    target: str = typer.Argument(None, help="Target URL (e.g., http://localhost:8000)"),
     adapter_name: str = typer.Option(
-        "static", "--adapter", "-a",
-        help="Adapter: static, openai, anthropic, ollama, huggingface",
+        None, "--adapter", "-a",
+        help="Adapter: openai, anthropic, ollama, huggingface",
     ),
     model_name: str | None = typer.Option(
         None, "--model", "-m", help="Model name",
@@ -2094,14 +2095,22 @@ def recon_cmd(
     """Deep reconnaissance — fingerprint framework, guardrails, capabilities.
 
     Runs the AI PTES recon cycle: framework detection, guardrail
-    classification, capability discovery, and model hints. Shows what
-    was probed, what was found, and what attack approach to use.
+    classification, capability discovery, and model hints.
 
     Examples:
+        aipop recon http://localhost:8000
         aipop recon --adapter openai --model gpt-4o-mini
-        aipop recon --adapter ollama --model llama3
-        aipop recon --adapter static
     """
+    if target is None and adapter_name is None:
+        print_error(
+            "No target specified. Usage:\n"
+            "  aipop recon http://localhost:8000\n"
+            "  aipop recon --adapter openai --model gpt-4o-mini"
+        )
+        raise typer.Exit(code=2)
+
+    if adapter_name is None:
+        adapter_name = "static"
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
@@ -2312,9 +2321,18 @@ def scan_cmd(
     try:
         cfg = load_config()
 
-        # Reject empty/whitespace target early — don't silently fall back to mock
+        # Require a target URL or explicit adapter — never silently fall back to mock
+        if target is None and adapter_name is None:
+            print_error(
+                "No target specified. Usage:\n"
+                "  aipop scan http://localhost:8000/chat\n"
+                "  aipop scan http://target/api/chat --prompt-field message --response-field reply\n"
+                "\nFor mock/static testing: aipop scan --adapter mock"
+            )
+            raise typer.Exit(code=2)
+
         if target is not None and not target.strip():
-            print_error("Target URL is empty. Provide a valid URL or omit to use mock adapter.")
+            print_error("Target URL is empty. Provide a valid URL.")
             raise typer.Exit(code=2)
 
         # Parse headers early so they're available for probe requests
@@ -2467,8 +2485,14 @@ def scan_cmd(
             raise typer.Exit(code=2) from None
 
         # Phase 2: Scan
+        _using_default_suite = suite is None
         if not is_json:
-            console.print(f"  [dim][[/][magenta]2/3[/][dim]][/] [bold]scan[/] [dim]— executing {len(all_cases)} test cases...[/]")
+            suite_label = ", ".join(recommended_suites)
+            if _using_default_suite:
+                console.print(f"  [dim][[/][magenta]2/3[/][dim]][/] [bold]scan[/] [dim]— executing {len(all_cases)} test cases from [/][cyan]{suite_label}[/][dim] (default)[/]")
+                console.print(f"  [dim]   tip: pick a suite with --suite. list available: aipop suites list[/]")
+            else:
+                console.print(f"  [dim][[/][magenta]2/3[/][dim]][/] [bold]scan[/] [dim]— executing {len(all_cases)} test cases from [/][cyan]{suite_label}[/]")
             _display_adapter = adapter_name or ("auto" if target else "static")
             mode_banner(
                 adapter_name=_display_adapter,
