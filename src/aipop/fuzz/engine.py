@@ -139,6 +139,171 @@ def load_payloads(source: str) -> list[str]:
         return [source]
 
 
+# ── Shared attempt execution (TYR-1332) ─────────────────────────────
+
+
+def _execute_attempt(
+    *,
+    payload_text: str,
+    strategy: str,
+    upload_url: str,
+    chat_url: str,
+    prompt_field: str,
+    response_field: str,
+    trigger: str,
+    wait_time: float,
+    leak_markers: list[str],
+    leak_regexes: list[str],
+    attempt: FuzzAttempt,
+) -> FuzzAttempt:
+    """Execute one fuzz attempt: craft → upload → trigger → leak check.
+
+    Shared between run_fuzz() and FuzzCampaign._execute() to eliminate
+    the 130-line duplication that caused idx shadowing and bypass rate bugs.
+    """
+    from aipop.payloads.craft import craft_pdf
+
+    start = time.time()
+
+    try:
+        # 1. Craft PDF
+        run_id = str(uuid.uuid4())[:8]
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, prefix="fuzz-") as tmp:
+            tmp_path = tmp.name
+
+        craft_pdf(payload=payload_text, strategy=strategy, output=tmp_path, doc_id=run_id)
+
+        # 2. Upload — JSON first, multipart fallback, base64 last resort
+        filename = f"fuzz-{run_id}.pdf"
+        try:
+            resp = requests.post(
+                upload_url,
+                json={"content": payload_text, "filename": filename},
+                timeout=30,
+            )
+            if resp.status_code not in (200, 201):
+                raise requests.RequestException(f"JSON upload returned {resp.status_code}")
+        except (requests.RequestException, ConnectionError):
+            try:
+                with open(tmp_path, "rb") as pdf_file:
+                    resp = requests.post(
+                        upload_url,
+                        files={"file": (filename, pdf_file, "application/pdf")},
+                        timeout=30,
+                    )
+            except (requests.RequestException, ConnectionError):
+                with open(tmp_path, "rb") as pdf_file:
+                    pdf_bytes = pdf_file.read()
+                resp = requests.post(
+                    upload_url,
+                    json={
+                        "content": base64.b64encode(pdf_bytes).decode(),
+                        "filename": filename,
+                        "encoding": "base64",
+                    },
+                    timeout=30,
+                )
+
+        if resp.status_code in (200, 201):
+            attempt.uploaded = True
+            try:
+                data = resp.json()
+                attempt.chunks_ingested = data.get("chunks_ingested", 0)
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                pass
+        else:
+            attempt.error = f"Upload failed: HTTP {resp.status_code}"
+
+        # 3. Trigger and check leaks (only if upload succeeded)
+        if attempt.uploaded:
+            time.sleep(wait_time)
+
+            resp = requests.post(
+                chat_url,
+                json={prompt_field: trigger},
+                timeout=60,
+            )
+
+            if resp.status_code >= 400:
+                attempt.error = f"Trigger failed: HTTP {resp.status_code}"
+            else:
+                reply_data = resp.json()
+                reply_text = reply_data.get(response_field, str(reply_data))
+                attempt.response_text = reply_text
+
+                # Check for leaks
+                leaked: list[str] = []
+                if leak_markers:
+                    for m in leak_markers:
+                        pos = reply_text.lower().find(m.lower())
+                        if pos >= 0:
+                            end = min(pos + len(m) + 80, len(reply_text))
+                            snippet = reply_text[pos:end]
+                            if m.endswith("{"):
+                                close = snippet.find("}")
+                                if close >= 0:
+                                    snippet = snippet[:close + 1]
+                            elif "\n" in snippet:
+                                snippet = snippet[:snippet.index("\n")]
+                            snippet = snippet.strip()
+                            if "REDACTED" in snippet and len(snippet) < 40:
+                                continue
+                            if snippet and snippet not in leaked:
+                                leaked.append(snippet)
+                if leak_regexes:
+                    for pat in leak_regexes:
+                        matches = re.findall(pat, reply_text, re.IGNORECASE)
+                        leaked.extend(matches[:3])
+
+                attempt.leaked_markers = leaked
+                attempt.vulnerable = len(leaked) > 0
+
+        # Cleanup temp file
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    except Exception as e:
+        attempt.error = str(e)
+
+    attempt.duration_ms = (time.time() - start) * 1000
+    return attempt
+
+
+def _compute_fuzz_stats(attempts: list[FuzzAttempt]) -> dict[str, Any]:
+    """Compute stats from a list of fuzz attempts. Shared between both paths."""
+    vuln_count = sum(1 for a in attempts if a.vulnerable)
+    clean_count = sum(1 for a in attempts if not a.vulnerable and not a.error)
+    error_count = sum(1 for a in attempts if a.error)
+
+    strategy_hits: dict[str, int] = {}
+    for a in attempts:
+        if a.vulnerable:
+            key = a.morph_strategy or a.strategy
+            strategy_hits[key] = strategy_hits.get(key, 0) + 1
+    best_strat = max(strategy_hits, key=strategy_hits.get) if strategy_hits else None
+
+    payload_hits: dict[str, int] = {}
+    for a in attempts:
+        if a.vulnerable:
+            short = a.payload[:60]
+            payload_hits[short] = payload_hits.get(short, 0) + 1
+    best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
+
+    valid_count = len(attempts) - error_count
+    bypass = vuln_count / valid_count if valid_count > 0 else 0
+
+    return {
+        "vuln_count": vuln_count,
+        "clean_count": clean_count,
+        "error_count": error_count,
+        "best_strategy": best_strat,
+        "best_payload": best_pay,
+        "bypass_rate": bypass,
+    }
+
+
 def run_fuzz(
     target: str,
     payloads: list[str],
@@ -202,128 +367,21 @@ def run_fuzz(
             strategy=strategy,
             trigger=trigger,
         )
-        start = time.time()
 
-        try:
-            # 1. Craft PDF
-            run_id = str(uuid.uuid4())[:8]
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, prefix="fuzz-") as tmp:
-                tmp_path = tmp.name
+        _execute_attempt(
+            payload_text=payload_text,
+            strategy=strategy,
+            upload_url=upload_url,
+            chat_url=chat_url,
+            prompt_field=prompt_field,
+            response_field=response_field,
+            trigger=trigger,
+            wait_time=wait_time,
+            leak_markers=leak_markers,
+            leak_regexes=leak_regexes,
+            attempt=attempt,
+        )
 
-            craft_pdf(payload=payload_text, strategy=strategy, output=tmp_path, doc_id=run_id)
-
-            # 2. Upload — JSON with extracted text first (most RAG apps use JSON),
-            #    then multipart binary as fallback (for native file upload APIs)
-            filename = f"fuzz-{run_id}.pdf"
-            try:
-                # Extract text from payload for JSON upload
-                resp = requests.post(
-                    upload_url,
-                    json={
-                        "content": payload_text,
-                        "filename": filename,
-                    },
-                    timeout=30,
-                )
-                if resp.status_code not in (200, 201):
-                    raise requests.RequestException(
-                        f"JSON upload returned {resp.status_code}"
-                    )
-            except (requests.RequestException, ConnectionError):
-                # Fallback: multipart binary PDF upload
-                try:
-                    with open(tmp_path, "rb") as pdf_file:
-                        resp = requests.post(
-                            upload_url,
-                            files={"file": (filename, pdf_file, "application/pdf")},
-                            timeout=30,
-                        )
-                except (requests.RequestException, ConnectionError):
-                    # Last resort: base64-encoded PDF in JSON body
-                    with open(tmp_path, "rb") as pdf_file:
-                        pdf_bytes = pdf_file.read()
-                    resp = requests.post(
-                        upload_url,
-                        json={
-                            "content": base64.b64encode(pdf_bytes).decode(),
-                            "filename": filename,
-                            "encoding": "base64",
-                        },
-                        timeout=30,
-                    )
-            if resp.status_code in (200, 201):
-                attempt.uploaded = True
-                try:
-                    data = resp.json()
-                    attempt.chunks_ingested = data.get("chunks_ingested", 0)
-                except (ValueError, requests.exceptions.JSONDecodeError):
-                    pass
-            else:
-                # Upload failed with HTTP error — this is not a bypass,
-                # it's an infrastructure error. Don't trigger or check leaks.
-                attempt.error = f"Upload failed: HTTP {resp.status_code}"
-
-            # Only trigger and check for leaks if upload actually succeeded.
-            # A 404/500 on upload is NOT a bypass — counting it as one
-            # produces false "100% bypass rate" results.
-            if attempt.uploaded:
-                # 4. Wait
-                time.sleep(wait_time)
-
-                # 5. Trigger
-                resp = requests.post(
-                    chat_url,
-                    json={prompt_field: trigger},
-                    timeout=60,
-                )
-
-                # Trigger must also succeed — a 4xx/5xx here is an error
-                if resp.status_code >= 400:
-                    attempt.error = f"Trigger failed: HTTP {resp.status_code}"
-                else:
-                    reply_data = resp.json()
-                    reply_text = reply_data.get(response_field, str(reply_data))
-                    attempt.response_text = reply_text
-
-                    # 6. Check for leaks
-                    leaked = []
-                    if leak_markers:
-                        for m in leak_markers:
-                            pos = reply_text.lower().find(m.lower())
-                            if pos >= 0:
-                                end = min(pos + len(m) + 80, len(reply_text))
-                                snippet = reply_text[pos:end]
-                                if m.endswith("{"):
-                                    close = snippet.find("}")
-                                    if close >= 0:
-                                        snippet = snippet[:close + 1]
-                                elif "\n" in snippet:
-                                    snippet = snippet[:snippet.index("\n")]
-                                snippet = snippet.strip()
-                                # Skip if DLP caught it (not a real leak)
-                                if "REDACTED" in snippet and len(snippet) < 40:
-                                    continue
-                                # Skip duplicates
-                                if snippet and snippet not in leaked:
-                                    leaked.append(snippet)
-                    if leak_regexes:
-                        for pat in leak_regexes:
-                            matches = re.findall(pat, reply_text, re.IGNORECASE)
-                            leaked.extend(matches[:3])
-
-                    attempt.leaked_markers = leaked
-                    attempt.vulnerable = len(leaked) > 0
-
-            # Cleanup temp file
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-
-        except Exception as e:
-            attempt.error = str(e)
-
-        attempt.duration_ms = (time.time() - start) * 1000
         attempts.append(attempt)
 
         if on_attempt:
@@ -341,40 +399,19 @@ def run_fuzz(
             except Exception:
                 pass
 
-    # Compute stats
-    vuln_count = sum(1 for a in attempts if a.vulnerable)
-    clean_count = sum(1 for a in attempts if not a.vulnerable and not a.error)
-    error_count = sum(1 for a in attempts if a.error)
-
-    # Best strategy
-    strategy_hits: dict[str, int] = {}
-    for a in attempts:
-        if a.vulnerable:
-            strategy_hits[a.strategy] = strategy_hits.get(a.strategy, 0) + 1
-    best_strat = max(strategy_hits, key=strategy_hits.get) if strategy_hits else None
-
-    # Best payload
-    payload_hits: dict[str, int] = {}
-    for a in attempts:
-        if a.vulnerable:
-            short = a.payload[:60]
-            payload_hits[short] = payload_hits.get(short, 0) + 1
-    best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
-
-    valid_count = len(attempts) - error_count
-    bypass = vuln_count / valid_count if valid_count > 0 else 0
+    stats = _compute_fuzz_stats(attempts)
 
     return FuzzResult(
         target=target,
         mode=mode,
         total_attempts=len(attempts),
-        vulnerable_count=vuln_count,
-        clean_count=clean_count,
-        error_count=error_count,
+        vulnerable_count=stats["vuln_count"],
+        clean_count=stats["clean_count"],
+        error_count=stats["error_count"],
         attempts=attempts,
-        best_strategy=best_strat,
-        best_payload=best_pay,
-        bypass_rate=bypass,
+        best_strategy=stats["best_strategy"],
+        best_payload=stats["best_payload"],
+        bypass_rate=stats["bypass_rate"],
     )
 
 
@@ -504,15 +541,14 @@ class FuzzCampaign:
         for idx, (payload_text, morph_strat, embed_strat) in enumerate(triples):
             # Rate limiting
             now = time.time()
-            elapsed = now - last_request_time
-            if elapsed < min_interval and idx > 0:
-                time.sleep(min_interval - elapsed)
+            elapsed_since = now - last_request_time
+            if elapsed_since < min_interval and idx > 0:
+                time.sleep(min_interval - elapsed_since)
 
             # Apply morph transform
             try:
                 morphed = self.morph_engine.morph(payload_text, morph_strat)
             except ValueError as e:
-                # Unknown morph strategy — record error and continue
                 attempt = FuzzAttempt(
                     index=idx + 1,
                     payload=payload_text,
@@ -534,127 +570,22 @@ class FuzzCampaign:
                 morphed_payload=morphed,
                 morph_strategy=morph_strat,
             )
-            start = time.time()
-            last_request_time = start
+            last_request_time = time.time()
 
-            try:
-                # 1. Craft PDF with morphed payload
-                run_id = str(uuid.uuid4())[:8]
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pdf", delete=False, prefix="fuzz-morph-"
-                ) as tmp:
-                    tmp_path = tmp.name
+            _execute_attempt(
+                payload_text=morphed,
+                strategy=embed_strat,
+                upload_url=upload_url,
+                chat_url=chat_url,
+                prompt_field=self.prompt_field,
+                response_field=self.response_field,
+                trigger=self.trigger_prompt,
+                wait_time=self.wait_time,
+                leak_markers=self.leak_markers,
+                leak_regexes=self.leak_regexes,
+                attempt=attempt,
+            )
 
-                craft_pdf(
-                    payload=morphed,
-                    strategy=embed_strat,
-                    output=tmp_path,
-                    doc_id=run_id,
-                )
-
-                # 2. Upload — JSON with extracted text first, multipart fallback
-                filename = f"fuzz-{run_id}.pdf"
-                try:
-                    resp = requests.post(
-                        upload_url,
-                        json={
-                            "content": morphed,
-                            "filename": filename,
-                        },
-                        timeout=30,
-                    )
-                    if resp.status_code not in (200, 201):
-                        raise requests.RequestException(
-                            f"JSON upload returned {resp.status_code}"
-                        )
-                except (requests.RequestException, ConnectionError):
-                    try:
-                        with open(tmp_path, "rb") as pdf_file:
-                            resp = requests.post(
-                                upload_url,
-                                files={"file": (filename, pdf_file, "application/pdf")},
-                                timeout=30,
-                            )
-                    except (requests.RequestException, ConnectionError):
-                        with open(tmp_path, "rb") as pdf_file:
-                            pdf_bytes = pdf_file.read()
-                        resp = requests.post(
-                            upload_url,
-                            json={
-                                "content": base64.b64encode(pdf_bytes).decode(),
-                                "filename": filename,
-                                "encoding": "base64",
-                            },
-                            timeout=30,
-                        )
-
-                if resp.status_code in (200, 201):
-                    attempt.uploaded = True
-                    try:
-                        data = resp.json()
-                        attempt.chunks_ingested = data.get("chunks_ingested", 0)
-                    except (ValueError, requests.exceptions.JSONDecodeError):
-                        pass
-                else:
-                    # Upload failed with HTTP error — not a bypass
-                    attempt.error = f"Upload failed: HTTP {resp.status_code}"
-
-                # Only trigger and check for leaks if upload actually succeeded.
-                # A 404/500 on upload is NOT a bypass.
-                if attempt.uploaded:
-                    # 3. Wait for ingestion
-                    time.sleep(self.wait_time)
-
-                    # 4. Trigger query
-                    resp = requests.post(
-                        chat_url,
-                        json={self.prompt_field: self.trigger_prompt},
-                        timeout=60,
-                    )
-
-                    # Trigger must also succeed
-                    if resp.status_code >= 400:
-                        attempt.error = f"Trigger failed: HTTP {resp.status_code}"
-                    else:
-                        reply_data = resp.json()
-                        reply_text = reply_data.get(self.response_field, str(reply_data))
-                        attempt.response_text = reply_text
-
-                        # 5. Check for leaks
-                        leaked = []
-                        for m in self.leak_markers:
-                            pos = reply_text.lower().find(m.lower())
-                            if pos >= 0:
-                                end = min(pos + len(m) + 80, len(reply_text))
-                                snippet = reply_text[pos:end]
-                                if m.endswith("{"):
-                                    close = snippet.find("}")
-                                    if close >= 0:
-                                        snippet = snippet[:close + 1]
-                                elif "\n" in snippet:
-                                    snippet = snippet[:snippet.index("\n")]
-                                snippet = snippet.strip()
-                                if "REDACTED" in snippet and len(snippet) < 40:
-                                    continue
-                                if snippet and snippet not in leaked:
-                                    leaked.append(snippet)
-                        for pat in self.leak_regexes:
-                            matches = re.findall(pat, reply_text, re.IGNORECASE)
-                            leaked.extend(matches[:3])
-
-                        attempt.leaked_markers = leaked
-                        attempt.vulnerable = len(leaked) > 0
-
-                # Cleanup
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-            except Exception as e:
-                attempt.error = str(e)
-
-            attempt.duration_ms = (time.time() - start) * 1000
             attempts.append(attempt)
 
             if self.on_attempt:
@@ -675,41 +606,19 @@ class FuzzCampaign:
                 except Exception:
                     pass
 
-        # Compute stats
-        vuln_count = sum(1 for a in attempts if a.vulnerable)
-        clean_count = sum(1 for a in attempts if not a.vulnerable and not a.error)
-        error_count = sum(1 for a in attempts if a.error)
-
-        # Best morph strategy
-        strategy_hits: dict[str, int] = {}
-        for a in attempts:
-            if a.vulnerable:
-                key = a.morph_strategy or a.strategy
-                strategy_hits[key] = strategy_hits.get(key, 0) + 1
-        best_strat = max(strategy_hits, key=strategy_hits.get) if strategy_hits else None
-
-        # Best payload
-        payload_hits: dict[str, int] = {}
-        for a in attempts:
-            if a.vulnerable:
-                short = a.payload[:60]
-                payload_hits[short] = payload_hits.get(short, 0) + 1
-        best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
-
-        valid_count = len(attempts) - error_count
-        bypass = vuln_count / valid_count if valid_count > 0 else 0
+        stats = _compute_fuzz_stats(attempts)
 
         return FuzzResult(
             target=self.target_url,
             mode=self.mode,
             total_attempts=len(attempts),
-            vulnerable_count=vuln_count,
-            clean_count=clean_count,
-            error_count=error_count,
+            vulnerable_count=stats["vuln_count"],
+            clean_count=stats["clean_count"],
+            error_count=stats["error_count"],
             attempts=attempts,
-            best_strategy=best_strat,
-            best_payload=best_pay,
-            bypass_rate=bypass,
+            best_strategy=stats["best_strategy"],
+            best_payload=stats["best_payload"],
+            bypass_rate=stats["bypass_rate"],
         )
 
 

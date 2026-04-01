@@ -128,8 +128,8 @@ class TestNonJsonResponse:
         from pathlib import Path
         engine = Path(__file__).parent.parent / "src" / "aipop" / "fuzz" / "engine.py"
         source = engine.read_text()
-        # Both paths should have the try/except
-        assert source.count("except (ValueError, requests.exceptions.JSONDecodeError)") >= 2
+        # Shared function has the try/except (was 2 before TYR-1332 extraction)
+        assert source.count("except (ValueError, requests.exceptions.JSONDecodeError)") >= 1
 
 
 # ── BUG 9: False positive email detection ────────────────────────────
