@@ -253,9 +253,24 @@ def _parse_test_case(case_data: Any, suite_id: str, case_num: int) -> TestCase: 
     else:
         prompt = case_data["prompt"]
 
-    # Add expected field to metadata if present at top level
+    # Validate and add expected field
+    VALID_EXPECTED = {"pass", "refuse", "fail"}
     if "expected" in case_data:
+        if case_data["expected"] not in VALID_EXPECTED:
+            raise YAMLSuiteError(
+                f"Invalid 'expected' value '{case_data['expected']}' in test '{test_id}'. "
+                f"Must be one of: {', '.join(sorted(VALID_EXPECTED))}"
+            )
         metadata["expected"] = case_data["expected"]
+
+    # Validate risk if present
+    VALID_RISKS = {"critical", "high", "medium", "low"}
+    risk = case_data.get("metadata", {}).get("risk", "")
+    if risk and risk not in VALID_RISKS:
+        raise YAMLSuiteError(
+            f"Invalid 'risk' value '{risk}' in test '{test_id}'. "
+            f"Must be one of: {', '.join(sorted(VALID_RISKS))}"
+        )
 
     # Operator control fields -- preserved in metadata for runner use
     for control_field in ["encoding", "delay_seconds", "mutation", "proxy",
