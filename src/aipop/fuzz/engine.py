@@ -38,6 +38,7 @@ class FuzzAttempt:
     morph_strategy: str = ""   # morph strategy applied (empty = none)
     uploaded: bool = False
     chunks_ingested: int = 0
+    retrieval_verified: bool | None = None  # None=not checked, True=retrieved, False=not retrieved
     response_text: str = ""
     leaked_markers: list[str] = field(default_factory=list)
     vulnerable: bool = False
@@ -208,10 +209,33 @@ def _execute_attempt(
         else:
             attempt.error = f"Upload failed: HTTP {resp.status_code}"
 
-        # 3. Trigger and check leaks (only if upload succeeded)
+        # 3. Retrieval verification — probe whether the poison entered context
         if attempt.uploaded:
             time.sleep(wait_time)
 
+            # Send a probe related to the payload to check if it was retrieved
+            probe_words = payload_text.split()[:5]
+            probe_query = f"What do you know about {' '.join(probe_words[:3])}?"
+            try:
+                probe_resp = requests.post(
+                    chat_url,
+                    json={prompt_field: probe_query},
+                    timeout=30,
+                )
+                if probe_resp.status_code < 400:
+                    probe_text = probe_resp.json().get(response_field, "")
+                    # Check if ANY word from the payload appears in the probe response
+                    payload_lower = payload_text.lower()
+                    probe_lower = probe_text.lower()
+                    overlap = sum(
+                        1 for w in probe_words
+                        if len(w) > 4 and w.lower() in probe_lower
+                    )
+                    attempt.retrieval_verified = overlap >= 2
+            except Exception:
+                attempt.retrieval_verified = None  # Probe failed, can't determine
+
+            # 4. Trigger and check leaks
             resp = requests.post(
                 chat_url,
                 json={prompt_field: trigger},
@@ -285,6 +309,9 @@ def _compute_fuzz_stats(attempts: list[FuzzAttempt]) -> dict[str, Any]:
             payload_hits[short] = payload_hits.get(short, 0) + 1
     best_pay = max(payload_hits, key=payload_hits.get) if payload_hits else None
 
+    retrieved_count = sum(1 for a in attempts if a.retrieval_verified is True)
+    not_retrieved_count = sum(1 for a in attempts if a.retrieval_verified is False)
+
     valid_count = len(attempts) - error_count
     bypass = vuln_count / valid_count if valid_count > 0 else 0
 
@@ -292,6 +319,8 @@ def _compute_fuzz_stats(attempts: list[FuzzAttempt]) -> dict[str, Any]:
         "vuln_count": vuln_count,
         "clean_count": clean_count,
         "error_count": error_count,
+        "retrieved_count": retrieved_count,
+        "not_retrieved_count": not_retrieved_count,
         "best_strategy": best_strat,
         "best_payload": best_pay,
         "bypass_rate": bypass,
