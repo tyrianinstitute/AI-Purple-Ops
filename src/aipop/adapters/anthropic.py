@@ -149,6 +149,7 @@ class AnthropicAdapter:
                 meta={
                     "model": self.model,
                     "latency_ms": latency_ms,
+                    "tokens": response.usage.input_tokens + response.usage.output_tokens,
                     "tokens_prompt": response.usage.input_tokens,
                     "tokens_completion": response.usage.output_tokens,
                     "cost_usd": cost,

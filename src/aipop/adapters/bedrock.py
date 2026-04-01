@@ -120,7 +120,8 @@ class BedrockAdapter:
                 meta={
                     "model": self.model,
                     "latency_ms": latency_ms,
-                    "tokens_prompt": len(prompt) // 4,  # Rough estimate
+                    "tokens": (len(prompt) + len(text)) // 4,  # Rough estimate
+                    "tokens_prompt": len(prompt) // 4,
                     "tokens_completion": len(text) // 4,
                     "cost_usd": cost,
                     "finish_reason": "stop",

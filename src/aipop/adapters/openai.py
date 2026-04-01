@@ -140,6 +140,7 @@ class OpenAIAdapter:
                 meta={
                     "model": self.model,
                     "latency_ms": latency_ms,
+                    "tokens": (response.usage.prompt_tokens + response.usage.completion_tokens) if response.usage else 0,
                     "tokens_prompt": response.usage.prompt_tokens if response.usage else 0,
                     "tokens_completion": response.usage.completion_tokens if response.usage else 0,
                     "cost_usd": cost,

@@ -83,6 +83,8 @@ class MockAdapter:
             tool_calls=tool_calls,
             meta={
                 "tokens": token_count,
+                "tokens_prompt": token_count // 3,
+                "tokens_completion": token_count - (token_count // 3),
                 "latency_ms": round(latency_ms, 2),
                 "cost_usd": round(cost_usd, 6),
                 "model": self.model,
