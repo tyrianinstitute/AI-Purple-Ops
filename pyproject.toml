@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aipop"
-version = "0.8.3"
+version = "0.8.4"
 description = "One CLI for AI security testing. Recon, scan, fuzz, chain, gate."
 readme = "README.md"
 requires-python = ">=3.11"
