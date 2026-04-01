@@ -2612,11 +2612,21 @@ def scan_cmd(
                     is_static=is_static,
                     console=console,
                 )
-                # Show leaked content snippet — the red text that makes the demo
-                if r.response and sev in ("CRITICAL", "HIGH"):
+                # Show what the pentester needs: attack, leaked data, verdict
+                if r.response and not is_static:
+                    # What leaked (response preview)
                     snippet = r.response[:120].replace("\n", " ").strip()
                     if snippet:
                         console.print(f"    [dim]→[/] [red]{snippet}[/]", highlight=False)
+                    # What was the attack (prompt preview)
+                    if r.prompt and sev in ("CRITICAL", "HIGH"):
+                        attack = r.prompt[:100].replace("\n", " ").strip()
+                        console.print(f"    [dim]attack:[/] {attack}", highlight=False)
+                    # What matched (behavior indicators)
+                    indicators = r.metadata.get("behavior_indicators", [])
+                    matched = [i for i in indicators if i.lower() in r.response.lower()]
+                    if matched:
+                        console.print(f"    [dim]matched:[/] {', '.join(matched[:5])}", highlight=False)
 
             # Verbose: show detector verdicts and timing
             if is_verbose():
