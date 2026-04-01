@@ -2091,23 +2091,44 @@ def recon_cmd(
     response_mode: str = typer.Option(
         "smart", "--response-mode", help="Static adapter response mode",
     ),
+    probe: str | None = typer.Option(
+        None, "--probe", "-p",
+        help="Comma-separated probes: http,behavior,guardrails,model. Default: all.",
+    ),
 ) -> None:
     """Deep reconnaissance — fingerprint framework, guardrails, capabilities.
 
-    Runs the AI PTES recon cycle: framework detection, guardrail
-    classification, capability discovery, and model hints.
+    nmap-style probe selection:
 
-    Examples:
-        aipop recon http://localhost:8000
-        aipop recon --adapter openai --model gpt-4o-mini
+        aipop recon http://target                          # all probes
+        aipop recon http://target --probe http             # HTTP only (fast)
+        aipop recon http://target --probe http,behavior    # HTTP + behavioral
+        aipop recon http://target --probe guardrails       # guardrail fingerprint only
+
+    Available probes: http, behavior, guardrails, model
     """
     if target is None and adapter_name is None:
         print_error(
             "No target specified. Usage:\n"
             "  aipop recon http://localhost:8000\n"
+            "  aipop recon http://localhost:8000 --probe http,behavior\n"
             "  aipop recon --adapter openai --model gpt-4o-mini"
         )
         raise typer.Exit(code=2)
+
+    # Parse probe selection
+    from aipop.intelligence.recon import RECON_PROBES, ALL_PROBES
+    if probe:
+        selected_probes = {p.strip() for p in probe.split(",")}
+        invalid = selected_probes - ALL_PROBES
+        if invalid:
+            print_error(
+                f"Unknown probe(s): {', '.join(sorted(invalid))}\n"
+                f"Available: {', '.join(sorted(ALL_PROBES))}"
+            )
+            raise typer.Exit(code=2)
+    else:
+        selected_probes = None  # all probes
 
     if adapter_name is None:
         adapter_name = "static"
@@ -2130,7 +2151,7 @@ def recon_cmd(
             console.print("\n  [bold cyan]◎ recon[/] — probing target...\n")
 
         from aipop.intelligence.recon import full_recon
-        result = full_recon(adapter)
+        result = full_recon(adapter, probes=selected_probes)
 
         if is_json:
             out = ctx.obj.get("_real_stdout") or sys.__stdout__

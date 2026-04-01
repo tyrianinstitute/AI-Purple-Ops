@@ -230,3 +230,34 @@ class TestFingerprintPath:
         fp = Path(__file__).parent.parent / "src" / "aipop" / "intelligence" / "fingerprint_engine.py"
         source = fp.read_text()
         assert "pip install aipop[intelligence]" in source
+
+
+# ── Recon --probe filtering ──────────────────────────────────────
+
+
+class TestReconProbeSelection:
+    """Recon must support nmap-style probe selection."""
+
+    def test_recon_probes_exist(self):
+        """RECON_PROBES dict must define all 4 phases."""
+        from aipop.intelligence.recon import RECON_PROBES, ALL_PROBES
+        assert "http" in ALL_PROBES
+        assert "behavior" in ALL_PROBES
+        assert "guardrails" in ALL_PROBES
+        assert "model" in ALL_PROBES
+        assert len(ALL_PROBES) == 4
+
+    def test_full_recon_accepts_probes_param(self):
+        """full_recon must accept a probes parameter."""
+        import inspect
+        from aipop.intelligence.recon import full_recon
+        sig = inspect.signature(full_recon)
+        assert "probes" in sig.parameters
+
+    def test_recon_cli_has_probe_flag(self):
+        """recon command must have --probe flag."""
+        from pathlib import Path
+        harness = Path(__file__).parent.parent / "src" / "aipop" / "cli" / "harness.py"
+        source = harness.read_text()
+        assert '"--probe"' in source
+        assert "RECON_PROBES" in source

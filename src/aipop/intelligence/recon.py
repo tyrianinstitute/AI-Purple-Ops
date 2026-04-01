@@ -500,16 +500,28 @@ def _status(msg: str, style: str = "dim") -> None:
         pass
 
 
-def full_recon(adapter: Any) -> ReconReport:
-    """Run the complete reconnaissance cycle.
+RECON_PROBES = {
+    "http": "HTTP fingerprinting — endpoints, headers, OpenAPI, upload detection",
+    "behavior": "Behavioral probes — RAG retrieval, tool calling, memory persistence",
+    "guardrails": "Framework and guardrail fingerprinting",
+    "model": "Model identification — speculative identity from response patterns",
+}
+ALL_PROBES = set(RECON_PROBES.keys())
 
-    Phase 1: HTTP fingerprinting (25s max — parallel probes)
-    Phase 2: Behavioral probes (15s max — 3 evidence-based probes)
-    Phase 3: Framework/guardrail classification
-    Phase 4: Combine into ReconReport
 
-    Returns structured ReconReport with findings and recommended approach.
+def full_recon(adapter: Any, probes: set[str] | None = None) -> ReconReport:
+    """Run the reconnaissance cycle with optional probe selection.
+
+    Probes (nmap-style, comma-separated via --probe flag):
+        http       — HTTP fingerprinting (endpoints, headers, OpenAPI)
+        behavior   — Behavioral probes (RAG, tools, memory)
+        guardrails — Framework/guardrail classification
+        model      — Model identification (speculative)
+
+    Pass probes=None for all. Pass probes={"http"} for just HTTP.
     """
+    if probes is None:
+        probes = ALL_PROBES
     from datetime import datetime, timezone
 
     target_name = f"{adapter.__class__.__name__}:{getattr(adapter, 'model', 'unknown')}"
@@ -532,7 +544,9 @@ def full_recon(adapter: Any) -> ReconReport:
     )
 
     # ── Phase 1: HTTP fingerprinting ────────────────────────────
-    if base_url_cleaned:
+    if "http" not in probes:
+        _status("phase 1/4 — skipped (not selected)")
+    elif base_url_cleaned:
         _status("phase 1/4 — HTTP fingerprinting (endpoints, headers, OpenAPI)")
         try:
             from aipop.intelligence.http_recon import HTTPRecon
@@ -618,10 +632,14 @@ def full_recon(adapter: Any) -> ReconReport:
         _status("phase 1/4 — skipped (no HTTP base URL, mock adapter?)")
 
     # ── Phase 2: Behavioral probes ──────────────────────────────
-    _status("phase 2/4 — behavioral probes (RAG, tools, memory)")
-    if report.has_tools:
+    if "behavior" not in probes:
+        _status("phase 2/4 — skipped (not selected)")
+    else:
+        _status("phase 2/4 — behavioral probes (RAG, tools, memory)")
+    if "behavior" in probes and report.has_tools:
         _status(f"  ↳ tools: already detected by HTTP recon ({report.tool_evidence})", "dim green")
-    try:
+    if "behavior" in probes:
+      try:
         from aipop.intelligence.discovery import TargetDiscovery
 
         discovery = TargetDiscovery()
@@ -675,31 +693,35 @@ def full_recon(adapter: Any) -> ReconReport:
                 elif "ACTIVE" in disc_result.details.get("file_upload", ""):
                     report.upload_guarded = True
 
-    except Exception as e:
+      except Exception as e:
         logger.warning("Behavioral probes failed: %s", e)
 
     # ── Phase 3: Framework/guardrail detection ──────────────────
-    _status("phase 3/4 — framework and guardrail fingerprinting")
-    fw_name, fw_conf, fw_evidence = detect_framework(adapter)
-    # Only override HTTP framework if behavioral detection has higher signal
-    if fw_name != "unknown" and not report.framework:
-        report.framework = fw_name
-    report.framework_confidence = fw_conf
-    report.framework_evidence.extend(fw_evidence)
+    if "guardrails" not in probes:
+        _status("phase 3/4 — skipped (not selected)")
+    else:
+        _status("phase 3/4 — framework and guardrail fingerprinting")
+        fw_name, fw_conf, fw_evidence = detect_framework(adapter)
+        if fw_name != "unknown" and not report.framework:
+            report.framework = fw_name
+        report.framework_confidence = fw_conf
+        report.framework_evidence.extend(fw_evidence)
 
-    if fw_name != "unknown":
-        _status(f"  ↳ framework: {fw_name} ({fw_conf} confidence)")
-    _status("  ↳ probing guardrail behavior...")
-    gr_type, gr_conf, gr_evidence = classify_guardrail(adapter)
-    report.guardrail_type = gr_type
-    report.guardrail_confidence = gr_conf
-    report.guardrail_evidence = gr_evidence
+        if fw_name != "unknown":
+            _status(f"  ↳ framework: {fw_name} ({fw_conf} confidence)")
+        _status("  ↳ probing guardrail behavior...")
+        gr_type, gr_conf, gr_evidence = classify_guardrail(adapter)
+        report.guardrail_type = gr_type
+        report.guardrail_confidence = gr_conf
+        report.guardrail_evidence = gr_evidence
 
-    if gr_type != "unknown":
-        _status(f"  ↳ guardrail: {gr_type} ({gr_conf} confidence)")
+        if gr_type != "unknown":
+            _status(f"  ↳ guardrail: {gr_type} ({gr_conf} confidence)")
 
     # ── Phase 4: Model hints ────────────────────────────────────
-    if not report.model_identity:
+    if "model" not in probes:
+        _status("phase 4/4 — skipped (not selected)")
+    elif not report.model_identity:
         _status("phase 4/4 — model identification (speculative)")
         try:
             response = adapter.invoke("What model are you? Answer in one sentence.")
