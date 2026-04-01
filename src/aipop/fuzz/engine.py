@@ -173,34 +173,28 @@ def _execute_attempt(
 
         craft_pdf(payload=payload_text, strategy=strategy, output=tmp_path, doc_id=run_id)
 
-        # 2. Upload — JSON first, multipart fallback, base64 last resort
+        # 2. Upload — always send the crafted PDF, not raw text.
+        #    JSON path sends base64-encoded PDF. Multipart sends the file.
+        #    This ensures the embed strategy (hidden_text/metadata/annotation)
+        #    is actually exercised — TYR-1317.
         filename = f"fuzz-{run_id}.pdf"
+        with open(tmp_path, "rb") as _pdf:
+            pdf_bytes = _pdf.read()
+        pdf_b64 = base64.b64encode(pdf_bytes).decode()
         try:
             resp = requests.post(
                 upload_url,
-                json={"content": payload_text, "filename": filename},
+                json={"content": pdf_b64, "filename": filename, "encoding": "base64"},
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
                 raise requests.RequestException(f"JSON upload returned {resp.status_code}")
         except (requests.RequestException, ConnectionError):
-            try:
-                with open(tmp_path, "rb") as pdf_file:
-                    resp = requests.post(
-                        upload_url,
-                        files={"file": (filename, pdf_file, "application/pdf")},
-                        timeout=30,
-                    )
-            except (requests.RequestException, ConnectionError):
-                with open(tmp_path, "rb") as pdf_file:
-                    pdf_bytes = pdf_file.read()
+            # Fallback: multipart binary PDF upload (for native file upload APIs)
+            with open(tmp_path, "rb") as pdf_file:
                 resp = requests.post(
                     upload_url,
-                    json={
-                        "content": base64.b64encode(pdf_bytes).decode(),
-                        "filename": filename,
-                        "encoding": "base64",
-                    },
+                    files={"file": (filename, pdf_file, "application/pdf")},
                     timeout=30,
                 )
 

@@ -149,7 +149,6 @@ class Scanner:
 
         # Exercise coverage metrics (TYR-1341)
         exercised = verdict_counts["vulnerable"] + verdict_counts["blocked"]
-        not_exercised = verdict_counts["refused"] + verdict_counts["inconclusive"] + verdict_counts["error"]
         verdict_counts["exercise_rate"] = round(exercised / total, 4) if total > 0 else 0
         verdict_counts["refusal_rate"] = round(verdict_counts["refused"] / total, 4) if total > 0 else 0
 
