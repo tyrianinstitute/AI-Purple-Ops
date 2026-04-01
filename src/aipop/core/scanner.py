@@ -71,6 +71,7 @@ class ScanResult:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to the JSON contract that --output json produces."""
         d: dict[str, Any] = {
+            "schema_version": "0.9.0",
             "status": self.overall_verdict,
             "total": self.total,
             "passed": self.passed,

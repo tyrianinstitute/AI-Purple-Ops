@@ -235,6 +235,7 @@ class JSONReporter:
             result_objects.append(result_obj)
 
         return {
+            "schema_version": "0.9.0",
             "total": total,
             "passed": passed,
             "failed": failed,
