@@ -2751,6 +2751,14 @@ def scan_cmd(
         summary_data["suite"] = scan_result.suite
         summary_data["adapter"] = adapter_name or ("auto:" + target if target else "static")
         summary_data["model"] = model_name or scan_result.model_name
+        # Verdict model (TYR-1340) — truthful scan status
+        if hasattr(scan_result, 'overall_verdict'):
+            summary_data["status"] = scan_result.overall_verdict
+            summary_data["verdicts"] = scan_result.verdicts
+            # Add per-result verdicts
+            for i, r in enumerate(scan_result.results):
+                if i < len(summary_data.get("results", [])):
+                    summary_data["results"][i]["verdict"] = r.verdict
         with json_path.open("w", encoding="utf-8") as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
 
@@ -2797,6 +2805,8 @@ def scan_cmd(
                 is_static=is_static,
                 console=console,
                 errors=scan_result.metadata.get("errors", 0),
+                overall_verdict=scan_result.overall_verdict if hasattr(scan_result, 'overall_verdict') else "",
+                verdicts=scan_result.verdicts if hasattr(scan_result, 'verdicts') else None,
             )
 
     except typer.Exit:

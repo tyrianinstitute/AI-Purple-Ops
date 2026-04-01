@@ -253,6 +253,8 @@ def scan_summary(
     is_static: bool = False,
     console: Console | None = None,
     errors: int = 0,
+    overall_verdict: str = "",
+    verdicts: dict[str, int] | None = None,
 ) -> None:
     """Display end-of-scan summary panel."""
     console = console or Console(stderr=True)
@@ -260,13 +262,22 @@ def scan_summary(
     if is_static:
         status = "[yellow]STATIC COMPLETE[/]"
         border = "yellow"
+    elif overall_verdict:
+        # Use the verdict model when available
+        verdict_display = {
+            "VULNERABLE": ("[bold red]VULNERABLE[/]", "red"),
+            "CLEAN": ("[bold green]CLEAN[/]", "green"),
+            "INCONCLUSIVE": ("[bold yellow]INCONCLUSIVE[/]", "yellow"),
+            "ERROR": ("[bold yellow]ERROR[/]", "yellow"),
+        }
+        status, border = verdict_display.get(
+            overall_verdict, ("[bold yellow]INCONCLUSIVE[/]", "yellow")
+        )
     elif errors > 0 and passed == 0 and failed == 0:
-        # ALL results were errors — target is unreachable or misconfigured
         status = "[bold yellow]ERROR — target unreachable[/]"
         border = "yellow"
     elif errors > 0 and failed == 0:
-        # Some errors, some passes, no failures — inconclusive
-        status = "[bold yellow]INCONCLUSIVE — {errors} errors[/]"
+        status = f"[bold yellow]INCONCLUSIVE — {errors} errors[/]"
         border = "yellow"
     elif failed > 0:
         status = "[bold red]VULNERABLE[/]"
